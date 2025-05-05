@@ -4,13 +4,13 @@ FROM node:20-alpine
 # Set the working directory in the container
 WORKDIR /usr/src/app
 
-# Copy package.json and package-lock.json (if available)
-COPY package*.json ./
+# Copy package.json AND package-lock.json
+# Using package-lock.json ensures reproducible installs
+COPY package.json package-lock.json ./
 
-# Install app dependencies
-RUN npm install
-# If you are building your code for production
-# RUN npm ci --omit=dev
+# Install app dependencies using the lock file for consistency
+# --omit=dev skips installing development dependencies
+RUN npm ci --omit=dev
 
 # Bundle app source
 COPY . .

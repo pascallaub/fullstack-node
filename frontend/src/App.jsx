@@ -3,7 +3,7 @@ import NoteInput from './components/NoteInput';
 import NoteList from './components/NoteList';
 
 // Read the API URL from environment variables provided during build time
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'; // Fallback for local dev
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8081/api'; // Fallback for local dev
 
 function App() {
   const [notes, setNotes] = useState([]);
