@@ -35,74 +35,86 @@ node-container/
 └── README.md            # This file (Overall project README)
 ```
 
-## Running the Application with Docker
+## Running the Application with Docker (with Custom Network and Reverse Proxy)
 
 **Prerequisites:** Docker Desktop installed and running.
 
-**1. Create Data Directory for Backend (for Bind Mount):**
+**1. Create a Docker Network:**
+   If it doesn't exist, create a dedicated network for the application:
+   ```bash
+   docker network create mini-notizblock-netzwerk
+   ```
 
-   Before running the backend container with data persistence, create the `data` directory on your host machine if it doesn't exist:
+**2. Create Data Directory for Backend (for Bind Mount):**
+   Ensure the data directory for the backend exists on your host:
    ```bash
    # Navigate to the project root (node-container)
    mkdir -p backend/data
    ```
-   *(On Windows, you might use `mkdir backend\data` in cmd or `New-Item -ItemType Directory -Path backend\data` in PowerShell if it doesn't exist)*
 
-**2. Build the Backend Docker Image:**
-
-   Navigate to the root directory (`node-container`) in your terminal.
-
+**3. Build Docker Images:**
    ```bash
+   # Build backend image
    docker build -t mini-notizblock-backend ./backend
+
+   # Build frontend image (VITE_API_URL defaults to /api for proxy setup)
+   docker build -t mini-notizblock-frontend ./vite-project
    ```
 
-**3. Build the Frontend Docker Image:**
-
-   The frontend needs to know the URL of the backend API *at build time*. Adjust `VITE_API_URL` if your backend will run on a different host port than `8081`.
-
-   ```bash
-   docker build -t mini-notizblock-frontend --build-arg VITE_API_URL=http://localhost:8081/api ./vite-project
-   ```
-
-**4. Run the Backend Container (with Data Persistence):**
-
-   This command runs the backend container in detached mode (`-d`), maps the host's port (e.g., `8081`) to the container's port `3000` (`-p 8081:3000`), sets the `PORT` environment variable inside the container (`-e PORT=3000`), names the container `backend-api`, and **mounts the local `./backend/data` directory to `/usr/src/app/data` inside the container for data persistence.**
+**4. Run the Backend Container:**
+   The backend container joins the custom network. Its port is not published to the host directly for frontend communication.
+   The container name `backend-api` is used by Nginx for proxying.
 
    *Using Git Bash or similar (macOS/Linux):*
    ```bash
-   docker run -d -p 8081:3000 -v "$PWD/backend/data:/usr/src/app/data" --name backend-api -e PORT=3000 mini-notizblock-backend
+   docker run -d \
+     --network mini-notizblock-netzwerk \
+     --name backend-api \
+     -v "$PWD/backend/data:/usr/src/app/data" \
+     -e PORT=3000 \
+     mini-notizblock-backend
    ```
    *Using Windows Command Prompt (cmd.exe):*
    ```powershell
-   docker run -d -p 8081:3000 -v "%CD%\backend\data:/usr/src/app/data" --name backend-api -e PORT=3000 mini-notizblock-backend
+   docker run -d ^
+     --network mini-notizblock-netzwerk ^
+     --name backend-api ^
+     -v "%CD%\backend\data:/usr/src/app/data" ^
+     -e PORT=3000 ^
+     mini-notizblock-backend
    ```
    *Using Windows PowerShell:*
    ```powershell
-   docker run -d -p 8081:3000 -v "${PWD}\backend\data:/usr/src/app/data" --name backend-api -e PORT=3000 mini-notizblock-backend
+   docker run -d `
+     --network mini-notizblock-netzwerk `
+     --name backend-api `
+     -v "${PWD}\backend\data:/usr/src/app/data" `
+     -e PORT=3000 `
+     mini-notizblock-backend
    ```
-   You can check backend logs with: `docker logs backend-api`
+   Check backend logs: `docker logs backend-api`
 
 **5. Run the Frontend Container:**
-
-   This command runs the frontend container in detached mode (`-d`), maps the host's port `8080` to the container's port `80` (where Nginx listens) (`-p 8080:80`), and names the container `frontend-app`.
-
+   The frontend container also joins the custom network and publishes its port (e.g., 8080) to the host for browser access. Nginx inside this container will proxy `/api` requests to `backend-api`.
    ```bash
-   docker run -d -p 8080:80 --name frontend-app mini-notizblock-frontend
+   docker run -d \
+     --network mini-notizblock-netzwerk \
+     --name frontend-app \
+     -p 8080:80 \
+     mini-notizblock-frontend
    ```
 
 **6. Access the Application:**
-
    Open your web browser and navigate to: [http://localhost:8080](http://localhost:8080)
+   API calls from the frontend (e.g., to `/api/notes`) will be proxied by Nginx to the backend container over the internal Docker network.
 
-   The React application should load, and it will make API calls to the backend running at `http://localhost:8081/api`. Notes data will be persisted in the `./backend/data/notes-data.json` file on your host.
-
-**7. Stopping and Removing Containers:**
-
+**7. Stopping and Removing Containers (and Network):**
    ```bash
    docker stop frontend-app backend-api
    docker rm frontend-app backend-api
+   # Optionally, remove the network if no longer needed
+   # docker network rm mini-notizblock-netzwerk
    ```
-   *(Note: Removing the `backend-api` container will NOT delete the `notes-data.json` file if you used a bind mount, as it resides on your host system.)*
 
 ## Data Persistence for Backend
 
@@ -150,3 +162,65 @@ In a development context, direct access to the data file on the host system is o
 
 *   **Backend Port:** Configured via the `PORT` environment variable (passed during `docker run` or system environment). Defaults to 3000.
 *   **Frontend API URL:** Configured via the `VITE_API_URL` build argument during the `docker build` step for the frontend image. This value is baked into the static frontend files.
+
+## Reflexion (Netzwerk & Reverse Proxy)
+
+### 1. Erkläre den Weg einer API-Anfrage vom Browser bis zum Backend-Container in diesem Setup.
+
+Der Weg einer API-Anfrage (z.B. `GET /api/notes`) sieht wie folgt aus:
+
+1.  **Browser:** Der Benutzer interagiert mit der React-Anwendung, die im Browser unter `http://localhost:8080` (oder dem gemappten Host-Port des Frontend-Containers) läuft. Die JavaScript-Anwendung im Browser initiiert einen `fetch`-Aufruf an `http://localhost:8080/api/notes`.
+2.  **Host (Netzwerk-Stack):** Die Anfrage geht vom Browser an den Netzwerk-Stack des Host-Betriebssystems, gerichtet an `localhost` auf Port `8080`.
+3.  **Frontend-Container (Nginx):** Docker leitet die Anfrage vom Host-Port `8080` an den internen Port `80` des `frontend-app`-Containers weiter. Dort nimmt der Nginx-Webserver die Anfrage entgegen.
+4.  **Nginx (Reverse Proxy):** Die Nginx-Konfiguration im `frontend-app`-Container hat einen `location /api/`-Block. Dieser Block fängt die Anfrage an `/api/notes` ab. Anstatt eine lokale Datei auszuliefern, leitet Nginx (dank der `proxy_pass http://backend-api:3000;`-Direktive) die Anfrage intern weiter.
+5.  **Docker Netzwerk:** Nginx versucht nun, den Hostnamen `backend-api` aufzulösen. Da sich sowohl der `frontend-app`- als auch der `backend-api`-Container im selben benutzerdefinierten Docker-Netzwerk (`mini-notizblock-netzwerk`) befinden, kann Docker die interne DNS-Auflösung nutzen, um `backend-api` zur internen IP-Adresse des `backend-api`-Containers (z.B. `172.18.0.2`) auf Port `3000` aufzulösen.
+6.  **Backend-Container (Node.js/Express API):** Die Anfrage erreicht den Node.js/Express-Server, der im `backend-api`-Container auf Port `3000` lauscht. Der Express-Router verarbeitet die Anfrage an den Endpunkt `/api/notes`, interagiert mit der Logik zur Datenpersistenz (liest/schreibt `notes-data.json`) und sendet eine Antwort zurück.
+7.  **Rückweg:** Die Antwort des Backend-Containers geht denselben Weg zurück: Backend-Container -> Docker Netzwerk -> Nginx im Frontend-Container -> Host-Netzwerk-Stack -> Browser.
+
+### 2. Warum kann der Browser `backend-service:3000` nicht direkt auflösen, Nginx im Frontend-Container aber schon?
+
+*   **Browser:** Der Browser läuft auf dem Host-System (oder in einer Umgebung, die das DNS des Host-Systems verwendet). Der Hostname `backend-service` (oder `backend-api` in unserer Implementierung) ist ein interner Docker-Netzwerk-Hostname. Er ist im globalen DNS oder im DNS des Host-Systems nicht bekannt und kann daher vom Browser nicht aufgelöst werden. Der Browser kennt nur Hostnamen, die öffentlich auflösbar sind oder in der lokalen `hosts`-Datei des Betriebssystems definiert sind.
+*   **Nginx im Frontend-Container:** Der Nginx-Prozess läuft innerhalb des `frontend-app`-Containers. Dieser Container ist Teil des benutzerdefinierten Docker-Netzwerks (`mini-notizblock-netzwerk`). Docker stellt für Container innerhalb desselben benutzerdefinierten Netzwerks eine automatische Service Discovery über DNS bereit. Das bedeutet, jeder Container kann andere Container im selben Netzwerk über deren Namen (wie `backend-api`) erreichen. Docker löst diesen Namen intern zur korrekten IP-Adresse des Zielcontainers innerhalb des Docker-Netzwerks auf.
+
+### 3. Welche Rolle spielt die benutzerdefinierte Nginx-Konfiguration für das Reverse Proxy Muster? Beschreibe den Zweck des relevanten `location` Blocks.
+
+Die benutzerdefinierte Nginx-Konfiguration (`nginx.conf` bzw. `default.conf` im Container) ist zentral für das Reverse Proxy Muster.
+
+*   **Rolle:** Sie agiert als Vermittler zwischen dem Client (Browser) und dem Backend-Service. Anstatt dass der Client direkt mit dem Backend kommuniziert, kommuniziert er nur mit dem Reverse Proxy (Nginx). Nginx nimmt die Anfragen entgegen und leitet sie intelligent an den oder die entsprechenden Backend-Server weiter.
+*   **Zweck des relevanten `location` Blocks:**
+    Der relevante Block in unserer Konfiguration ist:
+    ```nginx
+    location /api/ {
+        proxy_pass http://backend-api:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    ```
+    *   `location /api/ { ... }`: Diese Direktive definiert, dass alle Anfragen, deren Pfad mit `/api/` beginnt (z.B. `/api/notes`, `/api/users`), von diesem Block behandelt werden.
+    *   `proxy_pass http://backend-api:3000;`: Dies ist die Kernanweisung des Reverse Proxy. Sie weist Nginx an, die übereinstimmende Anfrage an den Upstream-Server weiterzuleiten, der unter der Adresse `http://backend-api:3000` erreichbar ist. Der Teil des Anfrage-URIs, der mit der `location`-Direktive übereinstimmt, wird entsprechend der `proxy_pass`-Syntax modifiziert und an den Backend-Server gesendet. In unserem Fall (mit `proxy_pass http://backend-api:3000;` ohne abschließenden Slash und `location /api/` mit abschließendem Slash) wird `/api/notes` zu `http://backend-api:3000/api/notes` weitergeleitet.
+    *   `proxy_set_header ...`: Diese Zeilen modifizieren oder fügen HTTP-Header hinzu, bevor die Anfrage an das Backend gesendet wird. Dies ist wichtig, damit das Backend Informationen über die ursprüngliche Anfrage erhält (z.B. den ursprünglichen `Host`-Header, die IP-Adresse des Clients (`X-Real-IP`, `X-Forwarded-For`)).
+
+### 4. Wie hat sich der Wert des Build-Arguments `VITE_API_URL` für das Frontend im Vergleich zur vorherigen Aufgabe geändert und warum (`http://localhost:8081` vs. `/api`)?
+
+*   **Vorherige Aufgabe (direkte Kommunikation mit gemapptem Port):**
+    *   `VITE_API_URL` war auf eine absolute URL wie `http://localhost:8081/api` gesetzt.
+    *   **Warum:** Der Browser musste direkt auf den Backend-Service zugreifen, der auf dem Host-System unter Port `8081` veröffentlicht wurde. Die React-Anwendung benötigte die vollständige Adresse, um den Backend-Server zu finden.
+
+*   **Aktuelle Aufgabe (mit Reverse Proxy):**
+    *   `VITE_API_URL` ist jetzt auf einen relativen Pfad wie `/api` gesetzt.
+    *   **Warum:** Die React-Anwendung läuft auf `http://localhost:8080` (dem Port des Nginx-Proxys). Alle API-Anfragen sollen an denselben Host und Port gehen, aber unter einem spezifischen Basispfad (`/api`). Zum Beispiel wird eine Anfrage an `/api/notes` zu `http://localhost:8080/api/notes`. Nginx im Frontend-Container fängt dann alle Anfragen an `http://localhost:8080/api/...` ab und leitet sie intern an den `backend-api`-Container weiter. Die React-Anwendung muss die tatsächliche Adresse des Backend-Containers (`backend-api:3000`) nicht mehr kennen; sie kommuniziert nur noch mit dem Proxy unter einem relativen Pfad.
+
+### 5. Welche Vorteile bietet dieses Reverse Proxy Muster (abgesehen von der DNS-Auflösung) im Vergleich dazu, wenn der Browser direkt mit dem Backend-Container auf einem gemappten Host-Port kommunizieren würde (z.B. in Bezug auf CORS)?
+
+Das Reverse Proxy Muster bietet mehrere Vorteile:
+
+1.  **Single Point of Entry / Vereinfachte URL-Struktur:** Alle Anfragen (sowohl für das Frontend als auch für das Backend) gehen an denselben Host und Port (z.B. `http://localhost:8080`). Dies vereinfacht die Konfiguration und die Wahrnehmung der Anwendung. Der Client muss sich nicht mit verschiedenen Ports für Frontend und Backend auseinandersetzen.
+2.  **CORS-Problematik umgangen (Same-Origin):** Da alle Anfragen vom Browser an denselben Ursprung (`http://localhost:8080`) gehen, werden Cross-Origin Resource Sharing (CORS) Probleme vermieden. Wenn der Browser direkt mit `http://localhost:3000` (Backend) von einer Seite auf `http://localhost:8080` (Frontend) kommunizieren würde, wäre dies eine Cross-Origin-Anfrage, die spezielle CORS-Header vom Backend erfordern würde. Mit dem Proxy kommen alle Anfragen scheinbar vom selben Ursprung.
+3.  **Load Balancing:** Obwohl in unserem einfachen Setup nicht genutzt, kann ein Reverse Proxy Anfragen auf mehrere Instanzen eines Backend-Services verteilen, um die Last zu verteilen und die Ausfallsicherheit zu erhöhen.
+4.  **SSL/TLS-Terminierung:** Der Reverse Proxy kann die SSL/TLS-Verschlüsselung für alle eingehenden Verbindungen übernehmen. Die interne Kommunikation zwischen dem Proxy und den Backend-Services kann dann unverschlüsselt (HTTP) im sicheren Docker-Netzwerk erfolgen, was die Konfiguration der Backend-Services vereinfacht.
+5.  **Caching:** Der Reverse Proxy kann häufig angeforderte Antworten zwischenspeichern, um die Backend-Server zu entlasten und die Antwortzeiten für Clients zu verbessern.
+6.  **Security / Isolation:** Das Backend muss seine Ports nicht direkt im Host-System veröffentlichen. Es ist nur über das interne Docker-Netzwerk und den Proxy erreichbar, was die Angriffsfläche reduziert. Der Proxy kann auch als eine Art Web Application Firewall (WAF) fungieren, um bösartige Anfragen zu filtern.
+7.  **Path-basiertes Routing / API-Gateway-Funktionalität:** Der Proxy kann Anfragen basierend auf dem Pfad an verschiedene Backend-Microservices weiterleiten, was eine komplexere Anwendungsarchitektur ermöglicht.
+8.  **Zentralisierte Request/Response Manipulation:** Header können zentral am Proxy modifiziert, hinzugefügt oder entfernt werden.

@@ -9,8 +9,8 @@ RUN npm install
 COPY . .
 
 # Define ARG for API URL (can be overridden during build)
-# Default points to localhost:3000 where the backend might run on the host
-ARG VITE_API_URL=http://localhost:3000/api
+# Jetzt relativ, da Nginx als Proxy dient
+ARG VITE_API_URL=/api
 # Set ENV variable for the build process using the ARG value
 ENV VITE_API_URL=${VITE_API_URL}
 
@@ -20,10 +20,16 @@ RUN npm run build
 # Stage 2: Serve the static files with Nginx
 FROM nginx:alpine
 
-# Remove default nginx static assets
+# Entferne die Standard-Nginx-Konfiguration
+RUN rm /etc/nginx/conf.d/default.conf
+
+# Kopiere unsere benutzerdefinierte Nginx-Konfiguration
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Entferne default nginx static assets
 RUN rm -rf /usr/share/nginx/html/*
 
-# Copy static assets from builder stage
+# Kopiere statische Assets vom Builder-Stage
 COPY --from=build-stage /app/dist /usr/share/nginx/html
 
 # Expose port 80
