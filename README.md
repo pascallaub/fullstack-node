@@ -6,6 +6,11 @@ This project demonstrates a simple full-stack note-taking application.
 *   **Backend:** Node.js Express API (`backend` directory).
 *   **Deployment:** Both frontend and backend are containerized using Docker and run as separate containers.
 
+## Theoretisches Datenbankmodell (SQL Recap)
+
+Für dieses Projekt wurde als theoretische Übung ein relationales Datenmodell für die Notizen-Funktionalität entworfen. Dieses Modell definiert Tabellen für Benutzer (`users`) und Notizen (`notes`) mit entsprechenden Spalten, Datentypen, Primärschlüsseln und einer Fremdschlüsselbeziehung, um darzustellen, wie die Daten in einer relationalen SQL-Datenbank strukturiert wären. Es beinhaltet auch beispielhafte SQL-CRUD-Abfragen (Create, Read, Update, Delete) für diese Tabellen.
+Die detaillierte Ausarbeitung dieses theoretischen Datenbankmodells und der SQL-Abfragen finden Sie in der Datei [sql-recap.md](sql-recap.md) im Hauptverzeichnis dieses Repositories.
+
 ## Project Structure
 
 ```
@@ -224,3 +229,115 @@ Das Reverse Proxy Muster bietet mehrere Vorteile:
 6.  **Security / Isolation:** Das Backend muss seine Ports nicht direkt im Host-System veröffentlichen. Es ist nur über das interne Docker-Netzwerk und den Proxy erreichbar, was die Angriffsfläche reduziert. Der Proxy kann auch als eine Art Web Application Firewall (WAF) fungieren, um bösartige Anfragen zu filtern.
 7.  **Path-basiertes Routing / API-Gateway-Funktionalität:** Der Proxy kann Anfragen basierend auf dem Pfad an verschiedene Backend-Microservices weiterleiten, was eine komplexere Anwendungsarchitektur ermöglicht.
 8.  **Zentralisierte Request/Response Manipulation:** Header können zentral am Proxy modifiziert, hinzugefügt oder entfernt werden.
+
+## 8. Mai 2025: Reflexion (Relationale Datenbanken & SQL)
+
+### 1. Warum ist die Speicherung von Anwendungsdaten in einer strukturierten Datenbank (mit Tabellen, Spalten, Datentypen, Schlüsseln) besser als die einfache Speicherung in einer JSON-Datei auf dem Dateisystem, wie wir sie in der vorherigen Aufgabe umgesetzt haben? Nenne mindestens drei Vorteile.
+
+Die Speicherung von Anwendungsdaten in einer strukturierten relationalen Datenbank bietet gegenüber der einfachen Speicherung in einer JSON-Datei auf dem Dateisystem mehrere signifikante Vorteile:
+
+1.  **Datenintegrität und -konsistenz:**
+    *   **Datentypen:** Datenbanken erzwingen Datentypen für jede Spalte (z.B. `INTEGER`, `VARCHAR`, `BOOLEAN`, `TIMESTAMP`). Dies stellt sicher, dass nur gültige Daten gespeichert werden und verhindert Inkonsistenzen, die bei einer flexiblen JSON-Struktur leicht entstehen können (z.B. eine ID mal als Zahl, mal als String).
+    *   **Constraints:** Durch Constraints wie `NOT NULL`, `UNIQUE`, Primär- und Fremdschlüssel können Geschäftsregeln und Beziehungen zwischen Daten direkt auf Datenbankebene definiert und erzwungen werden. Dies gewährleistet eine hohe Datenqualität und verhindert verwaiste oder inkonsistente Einträge. Eine JSON-Datei bietet solche Mechanismen nicht von Haus aus; die Logik zur Sicherstellung der Integrität müsste vollständig in der Anwendung implementiert und fehlerfrei gehalten werden.
+    *   **Atomarität (ACID-Eigenschaften):** Datenbanktransaktionen (bestehend aus einer oder mehreren Operationen) sind in der Regel atomar, konsistent, isoliert und dauerhaft (ACID). Das bedeutet, entweder werden alle Änderungen einer Transaktion erfolgreich durchgeführt oder keine, was die Daten auch bei Fehlern oder Systemabstürzen in einem konsistenten Zustand hält. Das manuelle Verwalten von Dateioperationen auf JSON-Dateien, um ähnliche Garantien zu erreichen, ist komplex und fehleranfällig.
+
+2.  **Effiziente Datenabfrage und -manipulation:**
+    *   **Mächtige Abfragesprache (SQL):** SQL (Structured Query Language) ermöglicht komplexe und flexible Abfragen, um Daten zu filtern, zu sortieren, zu gruppieren und zu verknüpfen (JOINs über mehrere Tabellen). Das Durchsuchen und Filtern großer JSON-Dateien erfordert oft das Laden und Parsen der gesamten Datei in den Speicher und manuelle Iterationen, was bei großen Datenmengen sehr ineffizient ist.
+    *   **Indizierung:** Datenbanken ermöglichen das Erstellen von Indizes auf häufig abgefragten Spalten. Indizes beschleunigen Suchvorgänge dramatisch, da die Datenbank nicht jede Zeile der Tabelle durchsuchen muss. Eine JSON-Datei hat keine vergleichbare eingebaute Indizierungsfunktion.
+    *   **Selektive Updates:** Mit SQL können gezielt einzelne Datensätze oder sogar nur bestimmte Felder eines Datensatzes aktualisiert werden, ohne den gesamten Datensatz neu schreiben zu müssen. Bei einer JSON-Datei muss oft die gesamte Datei gelesen, modifiziert und dann komplett neu geschrieben werden.
+
+3.  **Skalierbarkeit und Nebenläufigkeit (Concurrency):**
+    *   **Nebenläufiger Zugriff:** Datenbankmanagementsysteme (DBMS) sind darauf ausgelegt, den gleichzeitigen Zugriff vieler Benutzer und Prozesse auf die Daten zu verwalten. Sie verwenden komplexe Sperrmechanismen (Locking) und Transaktionsisolationsstufen, um Konflikte zu vermeiden und die Datenkonsistenz bei parallelen Schreib- und Leseoperationen sicherzustellen. Der gleichzeitige Zugriff auf eine einzelne JSON-Datei ist problematisch und erfordert externe Synchronisationsmechanismen, um Datenkorruption zu verhindern.
+    *   **Skalierbarkeit:** Relationale Datenbanken sind für die Verwaltung großer Datenmengen konzipiert und können oft besser skaliert werden (sowohl vertikal durch stärkere Hardware als auch horizontal durch Techniken wie Sharding oder Replikation, je nach DBMS). Die Performance beim Umgang mit sehr großen JSON-Dateien nimmt rapide ab.
+    *   **Backup und Recovery:** DBMS bieten in der Regel robuste Mechanismen für Backup, Point-in-Time-Recovery und Replikation, die für den produktiven Betrieb unerlässlich sind. Solche Funktionen für eine reine Dateisystemlösung selbst zu implementieren, ist aufwendig.
+
+### 2. Was ist der Hauptzweck eines Primärschlüssels in einer Tabelle, und wie hast du dieses Konzept in deinem Entwurf umgesetzt?
+
+Der **Hauptzweck eines Primärschlüssels** in einer Tabelle ist es, jede Zeile (jeden Datensatz) in dieser Tabelle **eindeutig zu identifizieren**. Er stellt sicher, dass es keine Duplikate von Datensätzen gibt und bietet eine zuverlässige Methode, um auf einen spezifischen Datensatz zu verweisen.
+
+Weitere wichtige Eigenschaften und Zwecke eines Primärschlüssels sind:
+*   **Eindeutigkeit:** Kein Wert im Primärschlüssel darf doppelt vorkommen.
+*   **Nicht-Null-Werte:** Ein Primärschlüssel darf keine `NULL`-Werte enthalten.
+*   **Indizierung:** Datenbanken erstellen automatisch einen Index für den Primärschlüssel, was Such- und Verknüpfungsoperationen (JOINs) beschleunigt.
+*   **Beziehungsdefinition:** Primärschlüssel werden von Fremdschlüsseln in anderen Tabellen referenziert, um Beziehungen zwischen Tabellen herzustellen.
+
+**Umsetzung im Entwurf:**
+In meinem Entwurf (`sql-recap.md`) habe ich dieses Konzept wie folgt umgesetzt:
+*   **Tabelle `users`:** Die Spalte `user_id` vom Typ `INTEGER` wurde als `PRIMARY KEY` definiert. Es wurde auch angemerkt, dass diese typischerweise `AUTOINCREMENT` (oder `SERIAL` in PostgreSQL) wäre, sodass die Datenbank automatisch für jeden neuen Benutzer eine eindeutige, fortlaufende ID generiert.
+*   **Tabelle `notes`:** Die Spalte `note_id` vom Typ `INTEGER` wurde als `PRIMARY KEY` definiert, ebenfalls mit der Annahme einer automatischen Inkrementierung.
+
+Diese numerischen, automatisch generierten IDs sind ideale Primärschlüssel, da sie:
+*   Garantiert eindeutig sind.
+*   Kompakt sind (effizient für Indizes und Verknüpfungen).
+*   Keine inhärente Bedeutung haben (sogenannte "Surrogate Keys"), was sie unempfindlich gegenüber Änderungen in anderen Datenfeldern macht.
+
+### 3. (Falls du einen Fremdschlüssel entworfen hast): Was ist der Zweck eines Fremdschlüssels, und welche Beziehung modelliert dein Fremdschlüssel?
+
+Ja, ich habe einen Fremdschlüssel entworfen.
+
+**Zweck eines Fremdschlüssels:**
+Der Hauptzweck eines Fremdschlüssels (`FOREIGN KEY`) ist es, eine **Beziehung zwischen zwei Tabellen herzustellen und die referentielle Integrität** zwischen diesen Tabellen sicherzustellen. Eine Fremdschlüsselspalte in einer Tabelle (der "referenzierenden" oder "Kind"-Tabelle) enthält Werte, die mit den Werten einer Primärschlüssel- (oder einer anderen eindeutigen) Spalte in einer anderen Tabelle (der "referenzierten" oder "Eltern"-Tabelle) übereinstimmen müssen.
+
+Dadurch wird sichergestellt, dass:
+*   Keine "verwaisten" Datensätze in der Kind-Tabelle entstehen können (d.h., es kann kein Datensatz in der Kind-Tabelle existieren, der auf einen nicht (mehr) existierenden Datensatz in der Eltern-Tabelle verweist).
+*   Die Daten über Tabellen hinweg konsistent bleiben.
+*   Aktionen auf der Eltern-Tabelle (wie `DELETE` oder `UPDATE` des Primärschlüssels) definierte Auswirkungen auf die Kind-Tabelle haben können (z.B. `ON DELETE CASCADE`, `ON DELETE SET NULL`, `ON DELETE RESTRICT`).
+
+**Beziehung, die mein Fremdschlüssel modelliert:**
+In meinem Entwurf (`sql-recap.md`) gibt es in der Tabelle `notes` die Spalte `user_id_fk`.
+*   **Fremdschlüssel:** `user_id_fk` in der Tabelle `notes`.
+*   **Referenzierte Tabelle und Spalte:** Diese Spalte verweist auf die Spalte `user_id` (den Primärschlüssel) in der Tabelle `users`.
+*   **Modellierte Beziehung:** Dieser Fremdschlüssel modelliert eine **Eins-zu-Viele-Beziehung (1:N)** zwischen `users` und `notes`.
+    *   Ein Benutzer (`user`) kann viele Notizen (`notes`) haben (das "Viele"-Ende der Beziehung).
+    *   Jede Notiz (`note`) gehört zu genau einem Benutzer (`user`) (das "Eins"-Ende der Beziehung, von der Notiz aus gesehen).
+    Die `NOT NULL`-Beschränkung auf `user_id_fk` stellt sicher, dass jede Notiz einem Benutzer zugeordnet sein muss.
+
+### 4. Wie würden die API-Endpunkte deiner Backend-Anwendung (GET /items, GET /items/:id, POST /items, DELETE /items/:id) theoretisch auf die von dir formulierten SQL-Abfragen abgebildet werden? Welche Art von Abfrage (SELECT, INSERT, UPDATE, DELETE) würde jeder Endpunkt typischerweise ausführen?
+
+Wenn wir "items" durch "notes" ersetzen, um zu unserem Datenmodell zu passen:
+
+*   **`GET /api/notes` (Alle Notizen abrufen):**
+    *   Würde typischerweise auf eine `SELECT`-Abfrage abgebildet, um alle Zeilen aus der `notes`-Tabelle abzurufen. Wenn Notizen benutzerspezifisch sind (wie in unserem Entwurf), würde man hier oft auch einen Filter basierend auf dem authentifizierten Benutzer hinzufügen (z.B. `SELECT * FROM notes WHERE user_id_fk = ?;`).
+    *   **SQL-Beispiel (allgemein):** `SELECT note_id, user_id_fk, text_content, created_at, updated_at FROM notes;`
+    *   **SQL-Beispiel (für einen bestimmten Benutzer):** `SELECT note_id, text_content, created_at, updated_at FROM notes WHERE user_id_fk = <aktueller_benutzer_id>;`
+
+*   **`GET /api/notes/:id` (Eine spezifische Notiz abrufen):**
+    *   Würde auf eine `SELECT`-Abfrage abgebildet, um eine einzelne Zeile aus der `notes`-Tabelle basierend auf ihrer `note_id` (dem Primärschlüssel) abzurufen. Auch hier könnte eine zusätzliche Prüfung erfolgen, ob die Notiz dem authentifizierten Benutzer gehört.
+    *   **SQL-Beispiel:** `SELECT note_id, user_id_fk, text_content, created_at, updated_at FROM notes WHERE note_id = <angeforderte_id>;`
+
+*   **`POST /api/notes` (Eine neue Notiz erstellen):**
+    *   Würde auf eine `INSERT INTO`-Abfrage abgebildet, um eine neue Zeile in die `notes`-Tabelle einzufügen. Die Daten für die neue Notiz (z.B. `text_content` und die `user_id_fk` des authentifizierten Benutzers) würden aus dem Request-Body stammen.
+    *   **SQL-Beispiel:** `INSERT INTO notes (user_id_fk, text_content) VALUES (<aktueller_benutzer_id>, '<text_aus_request_body>');`
+
+*   **`PUT /api/notes/:id` (Eine bestehende Notiz aktualisieren - nicht explizit in der Frage, aber eine typische CRUD-Operation):**
+    *   Würde auf eine `UPDATE`-Abfrage abgebildet, um eine oder mehrere Spalten einer spezifischen Zeile in der `notes`-Tabelle (identifiziert durch `note_id`) zu ändern.
+    *   **SQL-Beispiel:** `UPDATE notes SET text_content = '<neuer_text_aus_request_body>', updated_at = CURRENT_TIMESTAMP WHERE note_id = <angeforderte_id>;`
+
+*   **`DELETE /api/notes/:id` (Eine spezifische Notiz löschen):**
+    *   Würde auf eine `DELETE FROM`-Abfrage abgebildet, um eine spezifische Zeile aus der `notes`-Tabelle basierend auf ihrer `note_id` zu löschen. Auch hier sollte geprüft werden, ob der authentifizierte Benutzer die Berechtigung hat, diese Notiz zu löschen.
+    *   **SQL-Beispiel:** `DELETE FROM notes WHERE note_id = <angeforderte_id>;`
+
+### 5. Warum ist die Nutzung einer Datenbank für persistente Daten wichtig im Kontext von containerisierten Anwendungen und DevOps?
+
+Die Nutzung einer dedizierten Datenbank für persistente Daten ist im Kontext von containerisierten Anwendungen und DevOps aus mehreren Gründen extrem wichtig:
+
+1.  **Lebenszyklus-Entkopplung und Zustandslosigkeit von Containern:**
+    *   Container sind oft als kurzlebig und zustandslos (`stateless`) konzipiert. Sie können jederzeit gestoppt, neu gestartet, ersetzt oder skaliert werden (z.B. bei Updates, Fehlern oder Laständerungen). Wenn Anwendungsdaten direkt im Dateisystem des Containers gespeichert würden, gingen diese Daten verloren, sobald der Container entfernt wird.
+    *   Eine externe Datenbank entkoppelt den Lebenszyklus der Daten vom Lebenszyklus der Anwendungscontainer. Die Datenbank läuft als eigener, langlebiger Service (oft ebenfalls containerisiert, aber mit persistenten Volumes), und die Anwendungscontainer verbinden sich mit ihr, um Daten zu speichern und abzurufen.
+
+2.  **Datenpersistenz über Container-Neustarts und -Updates hinweg:**
+    *   DevOps-Praktiken beinhalten häufige Deployments und Updates. Durch die Auslagerung der Daten in eine Datenbank bleiben die Daten erhalten, auch wenn die Anwendungscontainer aktualisiert oder neu bereitgestellt werden.
+
+3.  **Skalierbarkeit:**
+    *   Anwendungscontainer können horizontal skaliert werden (mehrere Instanzen derselben Anwendung laufen parallel), um die Last zu verteilen. Alle diese Instanzen können sich mit derselben zentralen Datenbank verbinden und auf einen konsistenten Datenbestand zugreifen. Eine dateibasierte Speicherung innerhalb jedes Containers würde zu isolierten, inkonsistenten Daten führen.
+
+4.  **Zuverlässigkeit und Hochverfügbarkeit:**
+    *   Dedizierte Datenbanksysteme bieten oft eingebaute Mechanismen für Replikation, Failover und Backup, die für die Aufrechterhaltung der Datenverfügbarkeit und -integrität in Produktionsumgebungen unerlässlich sind. Diese Features sind schwer mit einfachen Dateisystem-basierten Lösungen zu erreichen.
+
+5.  **Zentralisierte Datenverwaltung und -zugriff:**
+    *   Eine zentrale Datenbank ermöglicht eine einheitliche Verwaltung der Daten, inklusive Zugriffskontrollen, Schema-Management, Monitoring und Auditing. Verschiedene Services oder Microservices können auf denselben Datenbestand zugreifen (mit entsprechenden Berechtigungen).
+
+6.  **Konsistenz bei verteilten Systemen:**
+    *   In Microservice-Architekturen, die in DevOps-Umgebungen üblich sind, ist eine zuverlässige Datenpersistenzschicht entscheidend, um die Datenkonsistenz über verschiedene Dienste hinweg zu gewährleisten, oft durch Transaktionsmanagement oder ereignisbasierte Konsistenzmodelle, die auf einer soliden Datenbank aufbauen.
+
+Zusammenfassend lässt sich sagen, dass die Trennung von Anwendungslogik (in zustandslosen Containern) und Datenspeicherung (in einer persistenten Datenbank) ein Kernprinzip für den Aufbau robuster, skalierbarer und wartbarer Anwendungen in modernen, containerisierten Umgebungen und DevOps-Workflows ist.
