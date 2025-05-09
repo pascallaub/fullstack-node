@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  database:
+    image: postgres:17-alpine
+    container_name: mini_notizblock_db_service
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER} # Wert kommt aus .env
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} # Wert kommt aus .env
+      POSTGRES_DB: ${POSTGRES_DB} # Wert kommt aus .env
+    volumes:
+      - postgres_db_data:/var/lib/postgresql/data # Hier wird das benannte Volume dem Container-Pfad zugewiesen
+    expose:
+      - "5432"
+    ports:
+      - "5433:5432"
+
+  backend:
+    build: ./backend
+    container_name: backend-api
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      NODE_ENV: development
+      DB_HOST: database
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER} # Wert kommt aus .env (derselbe wie für den DB-Service)
+      DB_PASSWORD: ${POSTGRES_PASSWORD} # Wert kommt aus .env (derselbe wie für den DB-Service)
+      DB_NAME: ${POSTGRES_DB} # Wert kommt aus .env (derselbe wie für den DB-Service)
+    expose:
+      - "3000"
+    depends_on:
+      - database
+    volumes:
+      - ./backend/data:/usr/src/app/data
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: /api
+    container_name: frontend-app
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_db_data: # Hier wird das benannte Volume definiert
+    name: mini_notizblock_postgres_data # Optional: Ein spezifischer Name für das Volume auf dem Host

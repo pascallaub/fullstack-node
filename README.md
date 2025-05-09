@@ -1,343 +1,287 @@
-# Full-Stack Mini-Notizblock (React + Node.js + Docker)
+# Full-Stack Mini-Notizblock (React + Node.js + Docker + PostgreSQL)
 
-This project demonstrates a simple full-stack note-taking application.
+Dieses Projekt demonstriert eine einfache Full-Stack-Notizanwendung.
 
-*   **Frontend:** React application built with Vite (`vite-project` directory).
-*   **Backend:** Node.js Express API (`backend` directory).
-*   **Deployment:** Both frontend and backend are containerized using Docker and run as separate containers.
+*   **Frontend:** React-Anwendung, erstellt mit Vite, bereitgestellt durch Nginx.
+*   **Backend:** Node.js Express API.
+*   **Datenbank:** PostgreSQL für persistente Datenspeicherung.
+*   **Bereitstellung:** Der gesamte Stack (Frontend, Backend, Datenbank) ist containerisiert und wird mit Docker Compose orchestriert.
 
 ## Theoretisches Datenbankmodell (SQL Recap)
 
 Für dieses Projekt wurde als theoretische Übung ein relationales Datenmodell für die Notizen-Funktionalität entworfen. Dieses Modell definiert Tabellen für Benutzer (`users`) und Notizen (`notes`) mit entsprechenden Spalten, Datentypen, Primärschlüsseln und einer Fremdschlüsselbeziehung, um darzustellen, wie die Daten in einer relationalen SQL-Datenbank strukturiert wären. Es beinhaltet auch beispielhafte SQL-CRUD-Abfragen (Create, Read, Update, Delete) für diese Tabellen.
 Die detaillierte Ausarbeitung dieses theoretischen Datenbankmodells und der SQL-Abfragen finden Sie in der Datei [sql-recap.md](sql-recap.md) im Hauptverzeichnis dieses Repositories.
 
-## Project Structure
+## Anwendung mit Docker Compose starten
 
+Dies ist die empfohlene Methode, um den gesamten Anwendungsstack auszuführen.
+
+**Voraussetzungen:**
+*   Docker Desktop muss installiert sein und laufen.
+*   Git (um das Repository zu klonen, falls noch nicht geschehen).
+
+**1. Umgebungskonfiguration (`.env`-Datei):**
+
+   Vor dem Start müssen Sie eine `.env`-Datei im Wurzelverzeichnis des Projekts (`node-container/.env`) erstellen. Diese Datei speichert die Zugangsdaten für die PostgreSQL-Datenbank.
+
+   Erstellen Sie eine Datei namens `.env` mit folgendem Inhalt und ersetzen Sie die Platzhalterwerte durch Ihre gewünschten Zugangsdaten:
+
+   ```env
+   # node-container/.env
+   POSTGRES_USER=ihr_db_benutzer
+   POSTGRES_PASSWORD=ihr_sicheres_db_passwort
+   POSTGRES_DB=ihr_db_name
+   ```
+   **Wichtig:** Übertragen Sie die `.env`-Datei NICHT in Ihr Git-Repository, wenn sie sensible Passwörter enthält. Stellen Sie sicher, dass `.env` in Ihrer `.gitignore`-Datei aufgeführt ist.
+
+**2. Anwendungsstack erstellen und starten:**
+
+   Navigieren Sie in Ihrem Terminal zum Wurzelverzeichnis des Projekts (`node-container/`) und führen Sie den folgenden Befehl aus:
+
+   ```bash
+   docker-compose up --build -d
+   ```
+
+   *   `docker-compose up`: Erstellt, (erneuert,) startet Container für einen Service und hängt sich optional an deren Ausgabe an.
+   *   `--build`: Zwingt Docker Compose, die Images vor dem Starten der Container neu zu erstellen. Dies ist nützlich, wenn Sie Änderungen an Ihrem `Dockerfile` oder Anwendungscode vorgenommen haben.
+   *   `-d` (Detached-Modus): Führt Container im Hintergrund aus und gibt die Namen der neuen Container aus.
+
+**3. Zugriff auf die Anwendung:**
+
+   Sobald die Container gestartet sind und laufen, öffnen Sie Ihren Webbrowser und navigieren Sie zu:
+   [http://localhost:8080](http://localhost:8080)
+
+   Die Frontend-Anwendung wird bereitgestellt, und API-Aufrufe werden an das Backend weitergeleitet, das (schließlich) mit der PostgreSQL-Datenbank interagieren wird.
+
+**4. Logs anzeigen:**
+
+   Wenn Sie die Container im Detached-Modus (`-d`) gestartet haben, können Sie die Logs für alle Services mit folgendem Befehl anzeigen:
+   ```bash
+   docker-compose logs
+   ```
+   Um die Logs in Echtzeit zu verfolgen (Live-Ansicht):
+   ```bash
+   docker-compose logs -f
+   ```
+   Um Logs für einen bestimmten Service anzuzeigen (z.B. Backend):
+   ```bash
+   docker-compose logs -f backend
+   ```
+   (Ersetzen Sie `backend` bei Bedarf durch `frontend` oder `database`).
+
+**5. Anwendung stoppen:**
+
+   Um alle laufenden Services zu stoppen, die in der `docker-compose.yml`-Datei definiert sind, navigieren Sie zum Wurzelverzeichnis des Projekts und führen Sie folgenden Befehl aus:
+   ```bash
+   docker-compose down
+   ```
+   Dieser Befehl stoppt und entfernt die Container, Netzwerke und (standardmäßig) benannte Volumes, sofern nicht anders angegeben. Wenn Sie das benannte Volume `postgres_db_data` beibehalten möchten (was typischerweise für Datenbankdaten der Fall ist), wird `docker-compose down` es standardmäßig nicht entfernen. Um auch Volumes zu entfernen, verwenden Sie `docker-compose down -v`.
+
+## Projektstruktur
 ```
 node-container/
-├── backend/             # Node.js Express API
-│   ├── data/            # (Will be created by the app or manually for bind mount)
-│   │   └── notes-data.json # (Generated by the app)
-│   ├── node_modules/    # (Generated)
+├── backend/                  # Node.js Express API
+│   ├── config/
+│   │   └── logger.js         # Winston Logger-Konfiguration
+│   ├── data/                 # (Wurde in früheren Phasen für JSON-Dateipersistenz verwendet)
+│   ├── node_modules/
 │   ├── package.json
 │   ├── package-lock.json
-│   ├── server.js        # API logic
-│   ├── Dockerfile       # Backend Docker configuration
+│   ├── server.js             # API-Logik
+│   ├── Dockerfile
 │   └── .dockerignore
-├── vite-project/        # React Frontend
-│   ├── dist/            # (Generated build output)
-│   ├── node_modules/    # (Generated)
+├── vite-project/             # React Frontend (oder 'frontend/', falls so benannt)
 │   ├── public/
-│   ├── src/             # Frontend source code
+│   ├── src/
 │   ├── .dockerignore
-│   ├── .gitignore
-│   ├── Dockerfile       # Frontend Docker configuration (Nginx)
+│   ├── Dockerfile            # Frontend Docker-Konfiguration (Nginx)
+│   ├── nginx.conf            # Nginx-Konfiguration für Reverse Proxy
 │   ├── index.html
 │   ├── package.json
-│   ├── package-lock.json
-│   ├── README.md        # Frontend specific README
 │   └── vite.config.js
-└── README.md            # This file (Overall project README)
+├── .env                      # Für Datenbank-Zugangsdaten (DIESE DATEI MUSS ERSTELLT WERDEN)
+├── .gitignore
+├── docker-compose.yml        # Docker Compose-Konfiguration für alle Services
+├── README.md                 # Diese Datei
+└── sql-recap.md              # Theoretisches SQL-Schema und Abfragen
 ```
 
-## Running the Application with Docker (with Custom Network and Reverse Proxy)
+## Entwicklung (Ohne Docker - Veraltet)
 
-**Prerequisites:** Docker Desktop installed and running.
+Dieser Abschnitt beschreibt, wie Frontend und Backend separat ohne Docker ausgeführt werden können, hauptsächlich für isolierte Entwicklung oder falls Docker nicht verfügbar ist. Beachten Sie, dass dieses Setup die in Docker Compose definierte PostgreSQL-Datenbank nicht verwendet.
 
-**1. Create a Docker Network:**
-   If it doesn't exist, create a dedicated network for the application:
-   ```bash
-   docker network create mini-notizblock-netzwerk
-   ```
-
-**2. Create Data Directory for Backend (for Bind Mount):**
-   Ensure the data directory for the backend exists on your host:
-   ```bash
-   # Navigate to the project root (node-container)
-   mkdir -p backend/data
-   ```
-
-**3. Build Docker Images:**
-   ```bash
-   # Build backend image
-   docker build -t mini-notizblock-backend ./backend
-
-   # Build frontend image (VITE_API_URL defaults to /api for proxy setup)
-   docker build -t mini-notizblock-frontend ./vite-project
-   ```
-
-**4. Run the Backend Container:**
-   The backend container joins the custom network. Its port is not published to the host directly for frontend communication.
-   The container name `backend-api` is used by Nginx for proxying.
-
-   *Using Git Bash or similar (macOS/Linux):*
-   ```bash
-   docker run -d \
-     --network mini-notizblock-netzwerk \
-     --name backend-api \
-     -v "$PWD/backend/data:/usr/src/app/data" \
-     -e PORT=3000 \
-     mini-notizblock-backend
-   ```
-   *Using Windows Command Prompt (cmd.exe):*
-   ```powershell
-   docker run -d ^
-     --network mini-notizblock-netzwerk ^
-     --name backend-api ^
-     -v "%CD%\backend\data:/usr/src/app/data" ^
-     -e PORT=3000 ^
-     mini-notizblock-backend
-   ```
-   *Using Windows PowerShell:*
-   ```powershell
-   docker run -d `
-     --network mini-notizblock-netzwerk `
-     --name backend-api `
-     -v "${PWD}\backend\data:/usr/src/app/data" `
-     -e PORT=3000 `
-     mini-notizblock-backend
-   ```
-   Check backend logs: `docker logs backend-api`
-
-**5. Run the Frontend Container:**
-   The frontend container also joins the custom network and publishes its port (e.g., 8080) to the host for browser access. Nginx inside this container will proxy `/api` requests to `backend-api`.
-   ```bash
-   docker run -d \
-     --network mini-notizblock-netzwerk \
-     --name frontend-app \
-     -p 8080:80 \
-     mini-notizblock-frontend
-   ```
-
-**6. Access the Application:**
-   Open your web browser and navigate to: [http://localhost:8080](http://localhost:8080)
-   API calls from the frontend (e.g., to `/api/notes`) will be proxied by Nginx to the backend container over the internal Docker network.
-
-**7. Stopping and Removing Containers (and Network):**
-   ```bash
-   docker stop frontend-app backend-api
-   docker rm frontend-app backend-api
-   # Optionally, remove the network if no longer needed
-   # docker network rm mini-notizblock-netzwerk
-   ```
-
-## Data Persistence for Backend
-
-For persisting the notes data (`notes-data.json`) generated by the backend API, a **Bind Mount** was chosen for this development environment.
-
-**Reasoning:**
-
-In a development context, direct access to the data file on the host system is often beneficial for quick inspection, debugging, or manual modifications.
-
-*   **Bind Mounts:**
-    *   **Pros:**
-        *   **Direct Host Access:** The data file (`backend/data/notes-data.json`) is directly accessible and editable on the host machine.
-        *   **Simplicity for Development:** Easy to set up and understand for local development workflows. Changes on the host are immediately reflected in the container and vice-versa.
-    *   **Cons:**
-        *   **Host Path Dependency:** Relies on a specific path existing on the host machine.
-        *   **Potential Performance Overhead:** For I/O intensive applications, bind mounts can be slower than named volumes (though negligible for this small JSON file).
-        *   **Less Portable:** Docker has less control over the lifecycle of the data compared to named volumes.
-
-*   **Named Volumes (Alternative):**
-    *   **Pros:** Managed by Docker, more portable, often better performance, platform-independent.
-    *   **Cons:** Data is stored in a Docker-managed location on the host, making direct access for quick edits during development slightly more cumbersome (requires `docker volume inspect` or accessing Docker's internal storage paths).
-
-**Conclusion for Development:** The convenience of direct file access with a Bind Mount outweighs the benefits of a Named Volume for this specific development scenario. For a production environment, a Named Volume would generally be preferred for its robustness and Docker-managed lifecycle.
-
-## Development (Without Docker)
-
-**1. Run Backend:**
+**1. Backend starten:**
    ```bash
    cd backend
    npm install
    npm start
    ```
-   (API runs on http://localhost:3000 by default. Data will be stored in `backend/data/notes-data.json`)
+   (API läuft standardmäßig auf http://localhost:3000. Der Mechanismus zur Datenpersistenz hängt von der aktuellen Backend-Implementierung ab - anfangs JSON-Datei, später PostgreSQL über Docker Compose).
 
-**2. Run Frontend:**
+**2. Frontend starten:**
    ```bash
-   cd ../vite-project
+   cd ../vite-project # oder cd ../frontend
    npm install
-   # Ensure VITE_API_URL in App.jsx or .env file points to http://localhost:3000/api for local backend
+   # Stellen Sie sicher, dass VITE_API_URL in App.jsx oder einer .env-Datei für das lokale Backend auf http://localhost:3000/api zeigt
    npm run dev
    ```
-   (Frontend runs on http://localhost:5173 by default)
+   (Frontend läuft standardmäßig auf http://localhost:5173)
 
-## Configuration
+## Konfigurationsdetails (über Docker Compose)
 
-*   **Backend Port:** Configured via the `PORT` environment variable (passed during `docker run` or system environment). Defaults to 3000.
-*   **Frontend API URL:** Configured via the `VITE_API_URL` build argument during the `docker build` step for the frontend image. This value is baked into the static frontend files.
+*   **Datenbank-Service (`database`):**
+    *   Image: `postgres:17-alpine`
+    *   Zugangsdaten: Konfiguriert über `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` in der `.env`-Datei.
+    *   Datenpersistenz: Verwendet ein benanntes Docker-Volume `postgres_db_data`, gemappt auf `/var/lib/postgresql/data`.
+    *   Port: Exponiert `5432` intern. Gemappt auf Host-Port `5433` für optionalen externen Zugriff.
+*   **Backend-Service (`backend`):**
+    *   Build: Aus `./backend/Dockerfile`.
+    *   Umgebungsvariablen:
+        *   `PORT`: 3000 (interner Port für die API).
+        *   `DB_HOST`: `database` (Service-Name des PostgreSQL-Containers).
+        *   `DB_PORT`: `5432`.
+        *   `DB_USER`, `DB_PASSWORD`, `DB_NAME`: Werden aus der `.env`-Datei übernommen.
+    *   Abhängig von: `database`-Service.
+*   **Frontend-Service (`frontend`):**
+    *   Build: Aus `./vite-project/Dockerfile` (oder `./frontend/Dockerfile`).
+    *   Build-Argument `VITE_API_URL`: Auf `/api` gesetzt für Nginx Reverse Proxy.
+    *   Ports: Mappt Host-Port `8080` auf Container-Port `80` (Nginx).
+    *   Abhängig von: `backend`-Service.
 
-## Reflexion (Netzwerk & Reverse Proxy)
+## Reflexionen
 
-### 1. Erkläre den Weg einer API-Anfrage vom Browser bis zum Backend-Container in diesem Setup.
+Dieser Abschnitt fasst die Reflexionsfragen und -antworten zu verschiedenen Aspekten des Projekts zusammen.
+
+### Thema: Netzwerk & Reverse Proxy
+
+#### 1. Erkläre den Weg einer API-Anfrage vom Browser bis zum Backend-Container in diesem Setup.
 
 Der Weg einer API-Anfrage (z.B. `GET /api/notes`) sieht wie folgt aus:
 
-1.  **Browser:** Der Benutzer interagiert mit der React-Anwendung, die im Browser unter `http://localhost:8080` (oder dem gemappten Host-Port des Frontend-Containers) läuft. Die JavaScript-Anwendung im Browser initiiert einen `fetch`-Aufruf an `http://localhost:8080/api/notes`.
+1.  **Browser:** Der Benutzer interagiert mit der React-Anwendung, die im Browser unter `http://localhost:8080` läuft. Die JavaScript-Anwendung initiiert einen `fetch`-Aufruf an `http://localhost:8080/api/notes`.
 2.  **Host (Netzwerk-Stack):** Die Anfrage geht vom Browser an den Netzwerk-Stack des Host-Betriebssystems, gerichtet an `localhost` auf Port `8080`.
-3.  **Frontend-Container (Nginx):** Docker leitet die Anfrage vom Host-Port `8080` an den internen Port `80` des `frontend-app`-Containers weiter. Dort nimmt der Nginx-Webserver die Anfrage entgegen.
-4.  **Nginx (Reverse Proxy):** Die Nginx-Konfiguration im `frontend-app`-Container hat einen `location /api/`-Block. Dieser Block fängt die Anfrage an `/api/notes` ab. Anstatt eine lokale Datei auszuliefern, leitet Nginx (dank der `proxy_pass http://backend-api:3000;`-Direktive) die Anfrage intern weiter.
-5.  **Docker Netzwerk:** Nginx versucht nun, den Hostnamen `backend-api` aufzulösen. Da sich sowohl der `frontend-app`- als auch der `backend-api`-Container im selben benutzerdefinierten Docker-Netzwerk (`mini-notizblock-netzwerk`) befinden, kann Docker die interne DNS-Auflösung nutzen, um `backend-api` zur internen IP-Adresse des `backend-api`-Containers (z.B. `172.18.0.2`) auf Port `3000` aufzulösen.
-6.  **Backend-Container (Node.js/Express API):** Die Anfrage erreicht den Node.js/Express-Server, der im `backend-api`-Container auf Port `3000` lauscht. Der Express-Router verarbeitet die Anfrage an den Endpunkt `/api/notes`, interagiert mit der Logik zur Datenpersistenz (liest/schreibt `notes-data.json`) und sendet eine Antwort zurück.
-7.  **Rückweg:** Die Antwort des Backend-Containers geht denselben Weg zurück: Backend-Container -> Docker Netzwerk -> Nginx im Frontend-Container -> Host-Netzwerk-Stack -> Browser.
+3.  **Frontend-Container (Nginx):** Docker Compose leitet die Anfrage vom Host-Port `8080` an den internen Port `80` des `frontend`-Containers weiter. Dort nimmt der Nginx-Webserver die Anfrage entgegen.
+4.  **Nginx (Reverse Proxy):** Die Nginx-Konfiguration im `frontend`-Container hat einen `location /api/`-Block. Dieser Block fängt die Anfrage an `/api/notes` ab. Nginx leitet die Anfrage (dank `proxy_pass http://backend:3000;`) intern weiter.
+5.  **Docker Netzwerk (Compose):** Nginx versucht nun, den Hostnamen `backend` aufzulösen. Da sich sowohl der `frontend`- als auch der `backend`-Container im selben von Docker Compose erstellten Netzwerk befinden, kann Docker die interne DNS-Auflösung nutzen, um `backend` zur internen IP-Adresse des `backend`-Containers auf Port `3000` aufzulösen.
+6.  **Backend-Container (Node.js/Express API):** Die Anfrage erreicht den Node.js/Express-Server, der im `backend`-Container auf Port `3000` lauscht. Der Express-Router verarbeitet die Anfrage an den Endpunkt `/api/notes`.
+7.  **Rückweg:** Die Antwort des Backend-Containers geht denselben Weg zurück.
 
-### 2. Warum kann der Browser `backend-service:3000` nicht direkt auflösen, Nginx im Frontend-Container aber schon?
+#### 2. Warum kann der Browser `backend:3000` nicht direkt auflösen, Nginx im Frontend-Container aber schon?
 
-*   **Browser:** Der Browser läuft auf dem Host-System (oder in einer Umgebung, die das DNS des Host-Systems verwendet). Der Hostname `backend-service` (oder `backend-api` in unserer Implementierung) ist ein interner Docker-Netzwerk-Hostname. Er ist im globalen DNS oder im DNS des Host-Systems nicht bekannt und kann daher vom Browser nicht aufgelöst werden. Der Browser kennt nur Hostnamen, die öffentlich auflösbar sind oder in der lokalen `hosts`-Datei des Betriebssystems definiert sind.
-*   **Nginx im Frontend-Container:** Der Nginx-Prozess läuft innerhalb des `frontend-app`-Containers. Dieser Container ist Teil des benutzerdefinierten Docker-Netzwerks (`mini-notizblock-netzwerk`). Docker stellt für Container innerhalb desselben benutzerdefinierten Netzwerks eine automatische Service Discovery über DNS bereit. Das bedeutet, jeder Container kann andere Container im selben Netzwerk über deren Namen (wie `backend-api`) erreichen. Docker löst diesen Namen intern zur korrekten IP-Adresse des Zielcontainers innerhalb des Docker-Netzwerks auf.
+*   **Browser:** Läuft auf dem Host und kennt die internen Docker-Netzwerk-Hostnamen (`backend`) nicht. Der Hostname `backend` ist nur innerhalb des von Docker Compose erstellten Netzwerks gültig.
+*   **Nginx im Frontend-Container:** Ist Teil des Docker-Compose-Netzwerks und kann andere Services über deren Service-Namen (`backend`) via Docker DNS auflösen.
 
-### 3. Welche Rolle spielt die benutzerdefinierte Nginx-Konfiguration für das Reverse Proxy Muster? Beschreibe den Zweck des relevanten `location` Blocks.
+#### 3. Welche Rolle spielt die benutzerdefinierte Nginx-Konfiguration für das Reverse Proxy Muster? Beschreibe den Zweck des relevanten `location` Blocks.
 
-Die benutzerdefinierte Nginx-Konfiguration (`nginx.conf` bzw. `default.conf` im Container) ist zentral für das Reverse Proxy Muster.
+Die benutzerdefinierte Nginx-Konfiguration ist zentral für das Reverse Proxy Muster. Der relevante `location` Block (typischerweise `location /api/ { ... }`) hat folgenden Zweck:
+*   **Anfragen abfangen:** Er fängt alle Anfragen ab, deren Pfad mit `/api/` beginnt.
+*   **Weiterleiten (`proxy_pass`):** Die Direktive `proxy_pass http://backend:3000;` leitet diese abgefangenen Anfragen an den `backend`-Service (der auf Port `3000` im Docker-Netzwerk lauscht) weiter.
+*   **Header-Manipulation:** Oft werden hier auch Header gesetzt (z.B. `proxy_set_header Host $host;`, `proxy_set_header X-Real-IP $remote_addr;`), um dem Backend-Service korrekte Informationen über die ursprüngliche Anfrage zu geben.
+Nginx agiert also als Vermittler, der Anfragen vom Client empfängt und an den entsprechenden Backend-Service weiterleitet, ohne dass der Client direkt mit dem Backend kommunizieren muss.
 
-*   **Rolle:** Sie agiert als Vermittler zwischen dem Client (Browser) und dem Backend-Service. Anstatt dass der Client direkt mit dem Backend kommuniziert, kommuniziert er nur mit dem Reverse Proxy (Nginx). Nginx nimmt die Anfragen entgegen und leitet sie intelligent an den oder die entsprechenden Backend-Server weiter.
-*   **Zweck des relevanten `location` Blocks:**
-    Der relevante Block in unserer Konfiguration ist:
-    ```nginx
-    location /api/ {
-        proxy_pass http://backend-api:3000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-    ```
-    *   `location /api/ { ... }`: Diese Direktive definiert, dass alle Anfragen, deren Pfad mit `/api/` beginnt (z.B. `/api/notes`, `/api/users`), von diesem Block behandelt werden.
-    *   `proxy_pass http://backend-api:3000;`: Dies ist die Kernanweisung des Reverse Proxy. Sie weist Nginx an, die übereinstimmende Anfrage an den Upstream-Server weiterzuleiten, der unter der Adresse `http://backend-api:3000` erreichbar ist. Der Teil des Anfrage-URIs, der mit der `location`-Direktive übereinstimmt, wird entsprechend der `proxy_pass`-Syntax modifiziert und an den Backend-Server gesendet. In unserem Fall (mit `proxy_pass http://backend-api:3000;` ohne abschließenden Slash und `location /api/` mit abschließendem Slash) wird `/api/notes` zu `http://backend-api:3000/api/notes` weitergeleitet.
-    *   `proxy_set_header ...`: Diese Zeilen modifizieren oder fügen HTTP-Header hinzu, bevor die Anfrage an das Backend gesendet wird. Dies ist wichtig, damit das Backend Informationen über die ursprüngliche Anfrage erhält (z.B. den ursprünglichen `Host`-Header, die IP-Adresse des Clients (`X-Real-IP`, `X-Forwarded-For`)).
+#### 4. Wie hat sich der Wert des Build-Arguments `VITE_API_URL` für das Frontend im Vergleich zur vorherigen Aufgabe geändert und warum (`http://localhost:PORT` vs. `/api`)?
 
-### 4. Wie hat sich der Wert des Build-Arguments `VITE_API_URL` für das Frontend im Vergleich zur vorherigen Aufgabe geändert und warum (`http://localhost:8081` vs. `/api`)?
+*   **Vorher (ohne Proxy auf gleichem Host):** `VITE_API_URL` war eine absolute URL (z.B. `http://localhost:3001/api` oder `http://backend:3000/api`, falls der Frontend-Code direkt im Browser lief und auf einen anderen Host/Port zugreifen musste). Der Browser musste wissen, unter welcher genauen Adresse das Backend erreichbar ist.
+*   **Jetzt (mit Proxy):** `VITE_API_URL` ist ein relativer Pfad wie `/api`. Die React-Anwendung sendet Anfragen an denselben Host und Port, von dem sie ausgeliefert wird (z.B. `http://localhost:8080/api`). Nginx, das auf `http://localhost:8080` lauscht, fängt diese Anfragen unter dem Pfad `/api` ab und leitet sie intern an das Backend weiter. Dies vereinfacht die Konfiguration der Frontend-Anwendung, da sie sich nicht um den genauen Standort des Backends kümmern muss.
 
-*   **Vorherige Aufgabe (direkte Kommunikation mit gemapptem Port):**
-    *   `VITE_API_URL` war auf eine absolute URL wie `http://localhost:8081/api` gesetzt.
-    *   **Warum:** Der Browser musste direkt auf den Backend-Service zugreifen, der auf dem Host-System unter Port `8081` veröffentlicht wurde. Die React-Anwendung benötigte die vollständige Adresse, um den Backend-Server zu finden.
-
-*   **Aktuelle Aufgabe (mit Reverse Proxy):**
-    *   `VITE_API_URL` ist jetzt auf einen relativen Pfad wie `/api` gesetzt.
-    *   **Warum:** Die React-Anwendung läuft auf `http://localhost:8080` (dem Port des Nginx-Proxys). Alle API-Anfragen sollen an denselben Host und Port gehen, aber unter einem spezifischen Basispfad (`/api`). Zum Beispiel wird eine Anfrage an `/api/notes` zu `http://localhost:8080/api/notes`. Nginx im Frontend-Container fängt dann alle Anfragen an `http://localhost:8080/api/...` ab und leitet sie intern an den `backend-api`-Container weiter. Die React-Anwendung muss die tatsächliche Adresse des Backend-Containers (`backend-api:3000`) nicht mehr kennen; sie kommuniziert nur noch mit dem Proxy unter einem relativen Pfad.
-
-### 5. Welche Vorteile bietet dieses Reverse Proxy Muster (abgesehen von der DNS-Auflösung) im Vergleich dazu, wenn der Browser direkt mit dem Backend-Container auf einem gemappten Host-Port kommunizieren würde (z.B. in Bezug auf CORS)?
+#### 5. Welche Vorteile bietet dieses Reverse Proxy Muster (abgesehen von der DNS-Auflösung) im Vergleich dazu, wenn der Browser direkt mit dem Backend-Container auf einem gemappten Host-Port kommunizieren würde (z.B. in Bezug auf CORS)?
 
 Das Reverse Proxy Muster bietet mehrere Vorteile:
+*   **Single Point of Entry:** Alle Anfragen gehen an einen einzigen Host und Port (z.B. `http://localhost:8080`), was die URL-Struktur für den Client vereinfacht.
+*   **CORS-Problematik umgangen:** Da alle Anfragen (sowohl für Frontend-Assets als auch für API-Daten) scheinbar vom selben Ursprung (`localhost:8080`) kommen, treten keine Cross-Origin Resource Sharing (CORS) Probleme auf, die sonst konfiguriert werden müssten, wenn Frontend und Backend auf unterschiedlichen Ports/Domains laufen.
+*   **Load Balancing:** Ein Reverse Proxy kann Anfragen auf mehrere Instanzen eines Backend-Services verteilen.
+*   **SSL/TLS-Terminierung:** HTTPS kann zentral am Reverse Proxy implementiert werden, sodass die internen Services unverschlüsselt kommunizieren können.
+*   **Caching:** Häufig angeforderte Inhalte können vom Reverse Proxy zwischengespeichert werden, um das Backend zu entlasten.
+*   **Verbesserte Sicherheit/Isolation:** Das Backend ist nicht direkt aus dem Internet erreichbar, sondern nur über den Proxy.
+*   **Path-basiertes Routing:** Anfragen können basierend auf dem Pfad an unterschiedliche Backend-Services weitergeleitet werden.
 
-1.  **Single Point of Entry / Vereinfachte URL-Struktur:** Alle Anfragen (sowohl für das Frontend als auch für das Backend) gehen an denselben Host und Port (z.B. `http://localhost:8080`). Dies vereinfacht die Konfiguration und die Wahrnehmung der Anwendung. Der Client muss sich nicht mit verschiedenen Ports für Frontend und Backend auseinandersetzen.
-2.  **CORS-Problematik umgangen (Same-Origin):** Da alle Anfragen vom Browser an denselben Ursprung (`http://localhost:8080`) gehen, werden Cross-Origin Resource Sharing (CORS) Probleme vermieden. Wenn der Browser direkt mit `http://localhost:3000` (Backend) von einer Seite auf `http://localhost:8080` (Frontend) kommunizieren würde, wäre dies eine Cross-Origin-Anfrage, die spezielle CORS-Header vom Backend erfordern würde. Mit dem Proxy kommen alle Anfragen scheinbar vom selben Ursprung.
-3.  **Load Balancing:** Obwohl in unserem einfachen Setup nicht genutzt, kann ein Reverse Proxy Anfragen auf mehrere Instanzen eines Backend-Services verteilen, um die Last zu verteilen und die Ausfallsicherheit zu erhöhen.
-4.  **SSL/TLS-Terminierung:** Der Reverse Proxy kann die SSL/TLS-Verschlüsselung für alle eingehenden Verbindungen übernehmen. Die interne Kommunikation zwischen dem Proxy und den Backend-Services kann dann unverschlüsselt (HTTP) im sicheren Docker-Netzwerk erfolgen, was die Konfiguration der Backend-Services vereinfacht.
-5.  **Caching:** Der Reverse Proxy kann häufig angeforderte Antworten zwischenspeichern, um die Backend-Server zu entlasten und die Antwortzeiten für Clients zu verbessern.
-6.  **Security / Isolation:** Das Backend muss seine Ports nicht direkt im Host-System veröffentlichen. Es ist nur über das interne Docker-Netzwerk und den Proxy erreichbar, was die Angriffsfläche reduziert. Der Proxy kann auch als eine Art Web Application Firewall (WAF) fungieren, um bösartige Anfragen zu filtern.
-7.  **Path-basiertes Routing / API-Gateway-Funktionalität:** Der Proxy kann Anfragen basierend auf dem Pfad an verschiedene Backend-Microservices weiterleiten, was eine komplexere Anwendungsarchitektur ermöglicht.
-8.  **Zentralisierte Request/Response Manipulation:** Header können zentral am Proxy modifiziert, hinzugefügt oder entfernt werden.
+### Thema: Relationale Datenbanken & SQL
 
-## 8. Mai 2025: Reflexion (Relationale Datenbanken & SQL)
+#### 1. Warum ist die Speicherung von Anwendungsdaten in einer strukturierten Datenbank (mit Tabellen, Spalten, Datentypen, Schlüsseln) besser als die einfache Speicherung in einer JSON-Datei auf dem Dateisystem? Nenne mindestens drei Vorteile.
 
-### 1. Warum ist die Speicherung von Anwendungsdaten in einer strukturierten Datenbank (mit Tabellen, Spalten, Datentypen, Schlüsseln) besser als die einfache Speicherung in einer JSON-Datei auf dem Dateisystem, wie wir sie in der vorherigen Aufgabe umgesetzt haben? Nenne mindestens drei Vorteile.
+1.  **Datenintegrität und -konsistenz:** Datenbanken erzwingen Datentypen, Constraints (z.B. `NOT NULL`, `UNIQUE`), Primär- und Fremdschlüssel. Dies sichert die Datenqualität und verhindert Inkonsistenzen. Transaktionen (ACID-Eigenschaften) gewährleisten, dass Daten auch bei Fehlern konsistent bleiben.
+2.  **Effiziente Datenabfrage und -manipulation:** SQL ermöglicht komplexe Abfragen (Filtern, Sortieren, Gruppieren, JOINs). Indizes beschleunigen Suchvorgänge erheblich. Selektive Updates sind möglich, ohne die gesamte Datenmenge neu schreiben zu müssen.
+3.  **Skalierbarkeit und Nebenläufigkeit (Concurrency):** Datenbanken sind für den gleichzeitigen Zugriff vieler Benutzer ausgelegt und verwalten Konflikte durch Sperrmechanismen. Sie skalieren besser für große Datenmengen und bieten robuste Backup- und Recovery-Mechanismen.
 
-Die Speicherung von Anwendungsdaten in einer strukturierten relationalen Datenbank bietet gegenüber der einfachen Speicherung in einer JSON-Datei auf dem Dateisystem mehrere signifikante Vorteile:
+#### 2. Was ist der Hauptzweck eines Primärschlüssels in einer Tabelle, und wie hast du dieses Konzept in deinem Entwurf umgesetzt?
 
-1.  **Datenintegrität und -konsistenz:**
-    *   **Datentypen:** Datenbanken erzwingen Datentypen für jede Spalte (z.B. `INTEGER`, `VARCHAR`, `BOOLEAN`, `TIMESTAMP`). Dies stellt sicher, dass nur gültige Daten gespeichert werden und verhindert Inkonsistenzen, die bei einer flexiblen JSON-Struktur leicht entstehen können (z.B. eine ID mal als Zahl, mal als String).
-    *   **Constraints:** Durch Constraints wie `NOT NULL`, `UNIQUE`, Primär- und Fremdschlüssel können Geschäftsregeln und Beziehungen zwischen Daten direkt auf Datenbankebene definiert und erzwungen werden. Dies gewährleistet eine hohe Datenqualität und verhindert verwaiste oder inkonsistente Einträge. Eine JSON-Datei bietet solche Mechanismen nicht von Haus aus; die Logik zur Sicherstellung der Integrität müsste vollständig in der Anwendung implementiert und fehlerfrei gehalten werden.
-    *   **Atomarität (ACID-Eigenschaften):** Datenbanktransaktionen (bestehend aus einer oder mehreren Operationen) sind in der Regel atomar, konsistent, isoliert und dauerhaft (ACID). Das bedeutet, entweder werden alle Änderungen einer Transaktion erfolgreich durchgeführt oder keine, was die Daten auch bei Fehlern oder Systemabstürzen in einem konsistenten Zustand hält. Das manuelle Verwalten von Dateioperationen auf JSON-Dateien, um ähnliche Garantien zu erreichen, ist komplex und fehleranfällig.
-
-2.  **Effiziente Datenabfrage und -manipulation:**
-    *   **Mächtige Abfragesprache (SQL):** SQL (Structured Query Language) ermöglicht komplexe und flexible Abfragen, um Daten zu filtern, zu sortieren, zu gruppieren und zu verknüpfen (JOINs über mehrere Tabellen). Das Durchsuchen und Filtern großer JSON-Dateien erfordert oft das Laden und Parsen der gesamten Datei in den Speicher und manuelle Iterationen, was bei großen Datenmengen sehr ineffizient ist.
-    *   **Indizierung:** Datenbanken ermöglichen das Erstellen von Indizes auf häufig abgefragten Spalten. Indizes beschleunigen Suchvorgänge dramatisch, da die Datenbank nicht jede Zeile der Tabelle durchsuchen muss. Eine JSON-Datei hat keine vergleichbare eingebaute Indizierungsfunktion.
-    *   **Selektive Updates:** Mit SQL können gezielt einzelne Datensätze oder sogar nur bestimmte Felder eines Datensatzes aktualisiert werden, ohne den gesamten Datensatz neu schreiben zu müssen. Bei einer JSON-Datei muss oft die gesamte Datei gelesen, modifiziert und dann komplett neu geschrieben werden.
-
-3.  **Skalierbarkeit und Nebenläufigkeit (Concurrency):**
-    *   **Nebenläufiger Zugriff:** Datenbankmanagementsysteme (DBMS) sind darauf ausgelegt, den gleichzeitigen Zugriff vieler Benutzer und Prozesse auf die Daten zu verwalten. Sie verwenden komplexe Sperrmechanismen (Locking) und Transaktionsisolationsstufen, um Konflikte zu vermeiden und die Datenkonsistenz bei parallelen Schreib- und Leseoperationen sicherzustellen. Der gleichzeitige Zugriff auf eine einzelne JSON-Datei ist problematisch und erfordert externe Synchronisationsmechanismen, um Datenkorruption zu verhindern.
-    *   **Skalierbarkeit:** Relationale Datenbanken sind für die Verwaltung großer Datenmengen konzipiert und können oft besser skaliert werden (sowohl vertikal durch stärkere Hardware als auch horizontal durch Techniken wie Sharding oder Replikation, je nach DBMS). Die Performance beim Umgang mit sehr großen JSON-Dateien nimmt rapide ab.
-    *   **Backup und Recovery:** DBMS bieten in der Regel robuste Mechanismen für Backup, Point-in-Time-Recovery und Replikation, die für den produktiven Betrieb unerlässlich sind. Solche Funktionen für eine reine Dateisystemlösung selbst zu implementieren, ist aufwendig.
-
-### 2. Was ist der Hauptzweck eines Primärschlüssels in einer Tabelle, und wie hast du dieses Konzept in deinem Entwurf umgesetzt?
-
-Der **Hauptzweck eines Primärschlüssels** in einer Tabelle ist es, jede Zeile (jeden Datensatz) in dieser Tabelle **eindeutig zu identifizieren**. Er stellt sicher, dass es keine Duplikate von Datensätzen gibt und bietet eine zuverlässige Methode, um auf einen spezifischen Datensatz zu verweisen.
-
-Weitere wichtige Eigenschaften und Zwecke eines Primärschlüssels sind:
-*   **Eindeutigkeit:** Kein Wert im Primärschlüssel darf doppelt vorkommen.
-*   **Nicht-Null-Werte:** Ein Primärschlüssel darf keine `NULL`-Werte enthalten.
-*   **Indizierung:** Datenbanken erstellen automatisch einen Index für den Primärschlüssel, was Such- und Verknüpfungsoperationen (JOINs) beschleunigt.
-*   **Beziehungsdefinition:** Primärschlüssel werden von Fremdschlüsseln in anderen Tabellen referenziert, um Beziehungen zwischen Tabellen herzustellen.
-
+Der Hauptzweck eines Primärschlüssels ist es, jede Zeile (jeden Datensatz) in einer Tabelle eindeutig zu identifizieren. Er stellt sicher, dass es keine Duplikate gibt und dient als Referenzpunkt.
 **Umsetzung im Entwurf:**
-In meinem Entwurf (`sql-recap.md`) habe ich dieses Konzept wie folgt umgesetzt:
-*   **Tabelle `users`:** Die Spalte `user_id` vom Typ `INTEGER` wurde als `PRIMARY KEY` definiert. Es wurde auch angemerkt, dass diese typischerweise `AUTOINCREMENT` (oder `SERIAL` in PostgreSQL) wäre, sodass die Datenbank automatisch für jeden neuen Benutzer eine eindeutige, fortlaufende ID generiert.
-*   **Tabelle `notes`:** Die Spalte `note_id` vom Typ `INTEGER` wurde als `PRIMARY KEY` definiert, ebenfalls mit der Annahme einer automatischen Inkrementierung.
+*   Tabelle `users`: Spalte `user_id` (INTEGER, PRIMARY KEY, typischerweise AUTOINCREMENT).
+*   Tabelle `notes`: Spalte `note_id` (INTEGER, PRIMARY KEY, typischerweise AUTOINCREMENT).
 
-Diese numerischen, automatisch generierten IDs sind ideale Primärschlüssel, da sie:
-*   Garantiert eindeutig sind.
-*   Kompakt sind (effizient für Indizes und Verknüpfungen).
-*   Keine inhärente Bedeutung haben (sogenannte "Surrogate Keys"), was sie unempfindlich gegenüber Änderungen in anderen Datenfeldern macht.
+#### 3. Was ist der Zweck eines Fremdschlüssels, und welche Beziehung modelliert dein Fremdschlüssel?
 
-### 3. (Falls du einen Fremdschlüssel entworfen hast): Was ist der Zweck eines Fremdschlüssels, und welche Beziehung modelliert dein Fremdschlüssel?
+Der Zweck eines Fremdschlüssels ist es, eine Beziehung zwischen zwei Tabellen herzustellen und die referentielle Integrität sicherzustellen (d.h. es gibt keine verwaisten Datensätze).
+**Modellierte Beziehung im Entwurf:**
+*   In der Tabelle `notes` verweist die Spalte `user_id_fk` (Fremdschlüssel) auf die Spalte `user_id` (Primärschlüssel) in der Tabelle `users`.
+*   Dies modelliert eine **Eins-zu-Viele-Beziehung**: Ein Benutzer kann viele Notizen haben, aber jede Notiz gehört zu genau einem Benutzer.
 
-Ja, ich habe einen Fremdschlüssel entworfen.
+#### 4. Wie würden die API-Endpunkte deiner Backend-Anwendung (GET /items, GET /items/:id, POST /items, DELETE /items/:id) theoretisch auf die von dir formulierten SQL-Abfragen abgebildet werden? (Bezogen auf "notes" statt "items")
 
-**Zweck eines Fremdschlüssels:**
-Der Hauptzweck eines Fremdschlüssels (`FOREIGN KEY`) ist es, eine **Beziehung zwischen zwei Tabellen herzustellen und die referentielle Integrität** zwischen diesen Tabellen sicherzustellen. Eine Fremdschlüsselspalte in einer Tabelle (der "referenzierenden" oder "Kind"-Tabelle) enthält Werte, die mit den Werten einer Primärschlüssel- (oder einer anderen eindeutigen) Spalte in einer anderen Tabelle (der "referenzierten" oder "Eltern"-Tabelle) übereinstimmen müssen.
+*   **`GET /api/notes`**: `SELECT * FROM notes;` (ggf. mit `WHERE user_id_fk = ?` für benutzerspezifische Notizen).
+*   **`GET /api/notes/:id`**: `SELECT * FROM notes WHERE note_id = ?;`
+*   **`POST /api/notes`**: `INSERT INTO notes (user_id_fk, text_content, ...) VALUES (?, ?, ...);`
+*   **`PUT /api/notes/:id`** (Aktualisieren): `UPDATE notes SET text_content = ?, ... WHERE note_id = ?;`
+*   **`DELETE /api/notes/:id`**: `DELETE FROM notes WHERE note_id = ?;`
 
-Dadurch wird sichergestellt, dass:
-*   Keine "verwaisten" Datensätze in der Kind-Tabelle entstehen können (d.h., es kann kein Datensatz in der Kind-Tabelle existieren, der auf einen nicht (mehr) existierenden Datensatz in der Eltern-Tabelle verweist).
-*   Die Daten über Tabellen hinweg konsistent bleiben.
-*   Aktionen auf der Eltern-Tabelle (wie `DELETE` oder `UPDATE` des Primärschlüssels) definierte Auswirkungen auf die Kind-Tabelle haben können (z.B. `ON DELETE CASCADE`, `ON DELETE SET NULL`, `ON DELETE RESTRICT`).
+#### 5. Warum ist die Nutzung einer Datenbank für persistente Daten wichtig im Kontext von containerisierten Anwendungen und DevOps?
 
-**Beziehung, die mein Fremdschlüssel modelliert:**
-In meinem Entwurf (`sql-recap.md`) gibt es in der Tabelle `notes` die Spalte `user_id_fk`.
-*   **Fremdschlüssel:** `user_id_fk` in der Tabelle `notes`.
-*   **Referenzierte Tabelle und Spalte:** Diese Spalte verweist auf die Spalte `user_id` (den Primärschlüssel) in der Tabelle `users`.
-*   **Modellierte Beziehung:** Dieser Fremdschlüssel modelliert eine **Eins-zu-Viele-Beziehung (1:N)** zwischen `users` und `notes`.
-    *   Ein Benutzer (`user`) kann viele Notizen (`notes`) haben (das "Viele"-Ende der Beziehung).
-    *   Jede Notiz (`note`) gehört zu genau einem Benutzer (`user`) (das "Eins"-Ende der Beziehung, von der Notiz aus gesehen).
-    Die `NOT NULL`-Beschränkung auf `user_id_fk` stellt sicher, dass jede Notiz einem Benutzer zugeordnet sein muss.
+1.  **Lebenszyklus-Entkopplung:** Daten bleiben erhalten, auch wenn zustandslose Anwendungscontainer neu gestartet, aktualisiert oder skaliert werden.
+2.  **Datenpersistenz:** Gewährleistet, dass Daten über Deployments und Updates hinweg bestehen bleiben.
+3.  **Skalierbarkeit:** Mehrere Instanzen von Anwendungscontainern können auf dieselbe zentrale Datenbank zugreifen.
+4.  **Zuverlässigkeit:** Datenbanken bieten Features wie Replikation, Failover und Backup.
+5.  **Zentralisierte Datenverwaltung:** Ermöglicht einheitliche Verwaltung von Zugriff, Schema und Monitoring.
 
-### 4. Wie würden die API-Endpunkte deiner Backend-Anwendung (GET /items, GET /items/:id, POST /items, DELETE /items/:id) theoretisch auf die von dir formulierten SQL-Abfragen abgebildet werden? Welche Art von Abfrage (SELECT, INSERT, UPDATE, DELETE) würde jeder Endpunkt typischerweise ausführen?
+### Thema: Docker Compose & Multi-Container Orchestrierung
 
-Wenn wir "items" durch "notes" ersetzen, um zu unserem Datenmodell zu passen:
+#### 1. Was sind die Hauptvorteile der Nutzung von Docker Compose, um alle Services (Frontend, Backend, Datenbank) gemeinsam zu definieren und zu starten, verglichen mit dem manuellen Starten jedes Containers mit `docker run`?
 
-*   **`GET /api/notes` (Alle Notizen abrufen):**
-    *   Würde typischerweise auf eine `SELECT`-Abfrage abgebildet, um alle Zeilen aus der `notes`-Tabelle abzurufen. Wenn Notizen benutzerspezifisch sind (wie in unserem Entwurf), würde man hier oft auch einen Filter basierend auf dem authentifizierten Benutzer hinzufügen (z.B. `SELECT * FROM notes WHERE user_id_fk = ?;`).
-    *   **SQL-Beispiel (allgemein):** `SELECT note_id, user_id_fk, text_content, created_at, updated_at FROM notes;`
-    *   **SQL-Beispiel (für einen bestimmten Benutzer):** `SELECT note_id, text_content, created_at, updated_at FROM notes WHERE user_id_fk = <aktueller_benutzer_id>;`
+1.  **Deklarative Konfiguration:** Eine `docker-compose.yml`-Datei beschreibt den gesamten Stack (Services, Netzwerke, Volumes), was übersichtlicher und versionierbar ist.
+2.  **Vereinfachtes Management:** Befehle wie `docker-compose up`, `down`, `logs` verwalten den gesamten Stack.
+3.  **Netzwerk-Management:** Automatische Erstellung eines Netzwerks, in dem Services sich über Namen finden.
+4.  **Volume-Management:** Einfache Definition und Verwaltung von Volumes für persistente Daten.
+5.  **Abhängigkeitsmanagement:** `depends_on` steuert die Startreihenfolge.
+6.  **Umgebungsvariablen-Management:** Zentrale Definition von Umgebungsvariablen, auch aus `.env`-Dateien.
+7.  **Reproduzierbarkeit:** Konsistente Umgebungen auf verschiedenen Maschinen.
 
-*   **`GET /api/notes/:id` (Eine spezifische Notiz abrufen):**
-    *   Würde auf eine `SELECT`-Abfrage abgebildet, um eine einzelne Zeile aus der `notes`-Tabelle basierend auf ihrer `note_id` (dem Primärschlüssel) abzurufen. Auch hier könnte eine zusätzliche Prüfung erfolgen, ob die Notiz dem authentifizierten Benutzer gehört.
-    *   **SQL-Beispiel:** `SELECT note_id, user_id_fk, text_content, created_at, updated_at FROM notes WHERE note_id = <angeforderte_id>;`
+#### 2. Beschreibe, wie die Zugangsdaten zur PostgreSQL-Datenbank in dieser Aufgabe an den Backend-Container übergeben werden. Welchen Mechanismus nutzt Docker Compose dafür und in welchem Abschnitt der `docker-compose.yml` wird dies konfiguriert?
 
-*   **`POST /api/notes` (Eine neue Notiz erstellen):**
-    *   Würde auf eine `INSERT INTO`-Abfrage abgebildet, um eine neue Zeile in die `notes`-Tabelle einzufügen. Die Daten für die neue Notiz (z.B. `text_content` und die `user_id_fk` des authentifizierten Benutzers) würden aus dem Request-Body stammen.
-    *   **SQL-Beispiel:** `INSERT INTO notes (user_id_fk, text_content) VALUES (<aktueller_benutzer_id>, '<text_aus_request_body>');`
+Die Zugangsdaten werden als **Umgebungsvariablen** an den Backend-Container übergeben.
+*   **Mechanismus:** Docker Compose verwendet den `environment`-Schlüssel innerhalb der Service-Definition.
+*   **Konfiguration:** Im `backend`-Service der `docker-compose.yml`:
+    ```yaml
+    environment:
+      DB_HOST: database
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
+    ```
+    Die `${VARIABLE}`-Werte werden aus einer `.env`-Datei im Projektwurzelverzeichnis geladen.
 
-*   **`PUT /api/notes/:id` (Eine bestehende Notiz aktualisieren - nicht explizit in der Frage, aber eine typische CRUD-Operation):**
-    *   Würde auf eine `UPDATE`-Abfrage abgebildet, um eine oder mehrere Spalten einer spezifischen Zeile in der `notes`-Tabelle (identifiziert durch `note_id`) zu ändern.
-    *   **SQL-Beispiel:** `UPDATE notes SET text_content = '<neuer_text_aus_request_body>', updated_at = CURRENT_TIMESTAMP WHERE note_id = <angeforderte_id>;`
+#### 3. Warum ist es eine Best Practice, sensible Daten wie Datenbank-Passwörter als Umgebungsvariablen an Container zu übergeben, anstatt sie direkt in den Code oder das Dockerfile zu schreiben?
 
-*   **`DELETE /api/notes/:id` (Eine spezifische Notiz löschen):**
-    *   Würde auf eine `DELETE FROM`-Abfrage abgebildet, um eine spezifische Zeile aus der `notes`-Tabelle basierend auf ihrer `note_id` zu löschen. Auch hier sollte geprüft werden, ob der authentifizierte Benutzer die Berechtigung hat, diese Notiz zu löschen.
-    *   **SQL-Beispiel:** `DELETE FROM notes WHERE note_id = <angeforderte_id>;`
+1.  **Sicherheit:** Vermeidet Hardcoding von Secrets im Code oder Docker-Image, die bei Zugriff auf das Repository oder Image einsehbar wären. Umgebungsvariablen werden erst zur Laufzeit gesetzt.
+2.  **Flexibilität:** Dieselbe Codebasis/Image kann in verschiedenen Umgebungen (Dev, Test, Prod) mit unterschiedlichen Credentials verwendet werden.
+3.  **Einfache Änderung:** Secrets können geändert werden, ohne Code oder Image neu bauen zu müssen.
+4.  **Trennung von Konfiguration und Code:** Folgt Best Practices wie den "Twelve-Factor App"-Richtlinien.
 
-### 5. Warum ist die Nutzung einer Datenbank für persistente Daten wichtig im Kontext von containerisierten Anwendungen und DevOps?
+#### 4. Warum ist es wichtig, das Datenbank-Passwort, selbst wenn es als Umgebungsvariable im Container verfügbar ist, nicht auf die Konsole zu loggen?
 
-Die Nutzung einer dedizierten Datenbank für persistente Daten ist im Kontext von containerisierten Anwendungen und DevOps aus mehreren Gründen extrem wichtig:
+1.  **Sicherheitsrisiko durch Log-Aggregation:** Logs werden oft zentral gesammelt; Passwörter in Logs wären dort einsehbar.
+2.  **Unbeabsichtigte Exposition:** Entwickler/Admins könnten Passwörter beim Log-Review sehen.
+3.  **Compliance:** Viele Sicherheitsstandards verbieten das Loggen von Secrets.
+4.  **Schwierige Bereinigung:** Einmal geloggte Passwörter sind schwer zu entfernen.
+Stattdessen sollte ein Platzhalter (z.B. `[REDACTED]`) geloggt werden.
 
-1.  **Lebenszyklus-Entkopplung und Zustandslosigkeit von Containern:**
-    *   Container sind oft als kurzlebig und zustandslos (`stateless`) konzipiert. Sie können jederzeit gestoppt, neu gestartet, ersetzt oder skaliert werden (z.B. bei Updates, Fehlern oder Laständerungen). Wenn Anwendungsdaten direkt im Dateisystem des Containers gespeichert würden, gingen diese Daten verloren, sobald der Container entfernt wird.
-    *   Eine externe Datenbank entkoppelt den Lebenszyklus der Daten vom Lebenszyklus der Anwendungscontainer. Die Datenbank läuft als eigener, langlebiger Service (oft ebenfalls containerisiert, aber mit persistenten Volumes), und die Anwendungscontainer verbinden sich mit ihr, um Daten zu speichern und abzurufen.
+#### 5. Wie kommuniziert der Backend-Container theoretisch mit dem Datenbank-Container in diesem Compose-Setup (wenn die Verbindung später aufgebaut wird)? Nenne den Hostnamen und Port, den das Backend verwenden würde.
 
-2.  **Datenpersistenz über Container-Neustarts und -Updates hinweg:**
-    *   DevOps-Praktiken beinhalten häufige Deployments und Updates. Durch die Auslagerung der Daten in eine Datenbank bleiben die Daten erhalten, auch wenn die Anwendungscontainer aktualisiert oder neu bereitgestellt werden.
+*   **Hostname:** Der Service-Name des Datenbank-Containers, also `database` (gemäß `docker-compose.yml`).
+*   **Port:** Der interne Port, auf dem PostgreSQL im Datenbank-Container lauscht, also `5432`.
+Die Verbindungszeichenfolge im Backend wäre etwa: `postgresql://<DB_USER>:<DB_PASSWORD>@database:5432/<DB_NAME>`.
 
-3.  **Skalierbarkeit:**
-    *   Anwendungscontainer können horizontal skaliert werden (mehrere Instanzen derselben Anwendung laufen parallel), um die Last zu verteilen. Alle diese Instanzen können sich mit derselben zentralen Datenbank verbinden und auf einen konsistenten Datenbestand zugreifen. Eine dateibasierte Speicherung innerhalb jedes Containers würde zu isolierten, inkonsistenten Daten führen.
+#### 6. Warum wird in diesem Setup das `ports` Mapping für den Backend-Service in der `docker-compose.yml` optional (oder weggelassen), während das `expose` Feld wichtig ist?
 
-4.  **Zuverlässigkeit und Hochverfügbarkeit:**
-    *   Dedizierte Datenbanksysteme bieten oft eingebaute Mechanismen für Replikation, Failover und Backup, die für die Aufrechterhaltung der Datenverfügbarkeit und -integrität in Produktionsumgebungen unerlässlich sind. Diese Features sind schwer mit einfachen Dateisystem-basierten Lösungen zu erreichen.
-
-5.  **Zentralisierte Datenverwaltung und -zugriff:**
-    *   Eine zentrale Datenbank ermöglicht eine einheitliche Verwaltung der Daten, inklusive Zugriffskontrollen, Schema-Management, Monitoring und Auditing. Verschiedene Services oder Microservices können auf denselben Datenbestand zugreifen (mit entsprechenden Berechtigungen).
-
-6.  **Konsistenz bei verteilten Systemen:**
-    *   In Microservice-Architekturen, die in DevOps-Umgebungen üblich sind, ist eine zuverlässige Datenpersistenzschicht entscheidend, um die Datenkonsistenz über verschiedene Dienste hinweg zu gewährleisten, oft durch Transaktionsmanagement oder ereignisbasierte Konsistenzmodelle, die auf einer soliden Datenbank aufbauen.
-
-Zusammenfassend lässt sich sagen, dass die Trennung von Anwendungslogik (in zustandslosen Containern) und Datenspeicherung (in einer persistenten Datenbank) ein Kernprinzip für den Aufbau robuster, skalierbarer und wartbarer Anwendungen in modernen, containerisierten Umgebungen und DevOps-Workflows ist.
+*   **`ports` Mapping (z.B. `- "3001:3000"`):** Veröffentlicht einen Container-Port auf dem Host-System. Für das Backend hier optional, da der Zugriff über den Frontend-Nginx-Proxy erfolgt und kein direkter Zugriff vom Host nötig ist.
+*   **`expose` Feld (z.B. `- "3000"`):** Deklariert einen Port, auf dem der Container lauscht, macht ihn aber nur für andere Container im selben Docker-Netzwerk zugänglich (nicht für den Host). Dies ist wichtig, damit der Frontend-Container (Nginx) den Backend-Container auf Port `3000` erreichen kann.
