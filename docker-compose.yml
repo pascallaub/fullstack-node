@@ -15,6 +15,12 @@ services:
       - "5432"
     ports:
       - "5433:5432"
+    healthcheck: # Hinzugefügt
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} -q"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   backend:
     build: ./backend
@@ -30,8 +36,9 @@ services:
       DB_NAME: ${POSTGRES_DB} # Wert kommt aus .env (derselbe wie für den DB-Service)
     expose:
       - "3000"
-    depends_on:
-      - database
+    depends_on: # Geändert/Hinzugefügt
+      database:
+        condition: service_healthy
     volumes:
       - ./backend/data:/usr/src/app/data
 

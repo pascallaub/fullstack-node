@@ -3,9 +3,39 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const logger = require('./config/logger'); // Winston Logger importieren
+const { Pool } = require('pg'); // pg importieren
 
 const app = express();
 const port = process.env.PORT || 3000;
+
+// --- Database Connection Pool ---
+const dbConfig = {
+  user: process.env.DB_USER,
+  host: process.env.DB_HOST,
+  database: process.env.DB_NAME,
+  password: process.env.DB_PASSWORD,
+  port: parseInt(process.env.DB_PORT || '5432', 10),
+};
+
+const pool = new Pool(dbConfig);
+
+pool.on('connect', () => {
+  logger.info('Successfully connected to the PostgreSQL database.');
+});
+
+pool.on('error', (err) => {
+  logger.error('Unexpected error on idle client in PostgreSQL pool', { error: err.message, stack: err.stack });
+  // Optional: process.exit(-1) oder andere Fehlerbehandlung, wenn die DB-Verbindung kritisch ist
+});
+
+// Test query to ensure connection is working
+pool.query('SELECT NOW()', (err, res) => {
+  if (err) {
+    logger.error('Error connecting to PostgreSQL or executing test query:', { error: err.message, stack: err.stack });
+  } else {
+    logger.info(`PostgreSQL connected: Test query result: ${res.rows[0].now}`);
+  }
+});
 
 // --- Log Database Environment Variables on startup ---
 const DB_HOST = process.env.DB_HOST;
@@ -27,102 +57,78 @@ if (DB_HOST && DB_PORT && DB_USER && DB_NAME) {
 }
 // --- End Database Environment Variables Logging ---
 
-
-// Define the data directory and the data file path
-const DATA_DIR = path.join(__dirname, 'data');
-const DATA_FILE = path.join(DATA_DIR, 'notes-data.json');
-
-// Helper function to ensure data directory exists
-const ensureDataDirExists = () => {
-  if (!fs.existsSync(DATA_DIR)) {
-    try {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-      logger.info(`Created data directory at ${DATA_DIR}`);
-    } catch (error) {
-      logger.error('Error creating data directory:', { error: error.message, stack: error.stack });
-      // Depending on the desired robustness, you might want to throw the error or handle it.
-    }
-  }
-};
-
-// Helper function to read data from file
-const readDataFromFile = () => {
-  ensureDataDirExists(); // Ensure directory exists before trying to read
-  try {
-    if (fs.existsSync(DATA_FILE)) {
-      const jsonData = fs.readFileSync(DATA_FILE);
-      return JSON.parse(jsonData);
-    }
-  } catch (error) {
-    logger.error('Error reading data file:', { error: error.message, stack: error.stack });
-  }
-  // If file doesn't exist or there's an error, return default structure
-  logger.info(`Data file not found or unreadable at ${DATA_FILE}, returning default structure.`);
-  return { notes: [], nextId: 1 };
-};
-
-// Helper function to write data to file
-const writeDataToFile = (data) => {
-  ensureDataDirExists(); // Ensure directory exists before trying to write
-  try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2)); // null, 2 for pretty printing
-    logger.debug('Data written to file successfully.');
-  } catch (error) {
-    logger.error('Error writing data file:', { error: error.message, stack: error.stack });
-  }
-};
-
-// Initialize notes and nextId from file
-let { notes, nextId } = readDataFromFile();
-
 app.use(cors());
 app.use(express.json());
 
 // --- API Endpoints ---
 // GET all notes
-app.get('/api/notes', (req, res) => {
+app.get('/api/notes', async (req, res, next) => {
   logger.info('GET /api/notes - Request received');
-  res.json(notes);
+  try {
+    const result = await pool.query('SELECT id, text_content AS text, created_at, updated_at FROM notes ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (err) {
+    logger.error('Error fetching notes from DB', { error: err.message, stack: err.stack });
+    next(err); // An den zentralen Fehlerhandler weiterleiten
+  }
 });
 
 // POST a new note
-app.post('/api/notes', (req, res) => {
+app.post('/api/notes', async (req, res, next) => {
   const { text } = req.body;
   if (!text) {
     logger.warn('POST /api/notes - Bad Request: Note text is required');
     return res.status(400).json({ error: 'Note text is required' });
   }
-  const newNote = { id: nextId++, text };
-  notes.push(newNote);
-  writeDataToFile({ notes, nextId });
-  logger.info(`POST /api/notes - Added new note:`, { noteId: newNote.id });
-  res.status(201).json(newNote);
+  try {
+    const result = await pool.query(
+      'INSERT INTO notes (text_content) VALUES ($1) RETURNING id, text_content AS text, created_at, updated_at',
+      [text]
+    );
+    const newNote = result.rows[0];
+    logger.info(`POST /api/notes - Added new note:`, { noteId: newNote.id });
+    res.status(201).json(newNote);
+  } catch (err) {
+    logger.error('Error adding note to DB', { error: err.message, stack: err.stack });
+    next(err);
+  }
 });
 
 // DELETE a note by id
-app.delete('/api/notes/:id', (req, res) => {
+app.delete('/api/notes/:id', async (req, res, next) => {
   const idToDelete = parseInt(req.params.id, 10);
-  const initialLength = notes.length;
-  notes = notes.filter(note => note.id !== idToDelete);
-
-  if (notes.length < initialLength) {
-    writeDataToFile({ notes, nextId });
-    logger.info(`DELETE /api/notes/${idToDelete} - Note deleted successfully`);
-    res.status(204).send();
-  } else {
-    logger.warn(`DELETE /api/notes/${idToDelete} - Note not found`);
-    res.status(404).json({ error: 'Note not found' });
+  if (isNaN(idToDelete)) {
+    logger.warn(`DELETE /api/notes/${req.params.id} - Invalid ID format`);
+    return res.status(400).json({ error: 'Invalid ID format' });
   }
+  try {
+    const result = await pool.query('DELETE FROM notes WHERE id = $1 RETURNING id', [idToDelete]);
+    if (result.rowCount > 0) {
+      logger.info(`DELETE /api/notes/${idToDelete} - Note deleted successfully`);
+      res.status(204).send();
+    } else {
+      logger.warn(`DELETE /api/notes/${idToDelete} - Note not found`);
+      res.status(404).json({ error: 'Note not found' });
+    }
+  } catch (err) {
+    logger.error('Error deleting note from DB', { error: err.message, stack: err.stack });
+    next(err);
+  }
+});
+
+// --- Central Error Handler ---
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  logger.error('Unhandled error:', {
+    message: err.message,
+    stack: err.stack,
+    url: req.originalUrl,
+    method: req.method
+  });
+  res.status(500).json({ error: 'Internal Server Error' });
 });
 
 // --- Server Start ---
 app.listen(port, () => {
   logger.info(`Backend server listening on port ${port}`);
-  // Ensure data file exists on startup or create it with initial empty data
-  // The readDataFromFile and writeDataToFile will handle directory creation
-  // but we can explicitly ensure the file is initialized if it doesn't exist after reading.
-  if (!fs.existsSync(DATA_FILE)) {
-    logger.info(`Data file not found at ${DATA_FILE}, initializing with empty data.`);
-    writeDataToFile({ notes: [], nextId: 1 }); // This will also create the directory if needed
-  }
 });

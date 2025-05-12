@@ -285,3 +285,164 @@ Die Verbindungszeichenfolge im Backend wäre etwa: `postgresql://<DB_USER>:<DB_P
 
 *   **`ports` Mapping (z.B. `- "3001:3000"`):** Veröffentlicht einen Container-Port auf dem Host-System. Für das Backend hier optional, da der Zugriff über den Frontend-Nginx-Proxy erfolgt und kein direkter Zugriff vom Host nötig ist.
 *   **`expose` Feld (z.B. `- "3000"`):** Deklariert einen Port, auf dem der Container lauscht, macht ihn aber nur für andere Container im selben Docker-Netzwerk zugänglich (nicht für den Host). Dies ist wichtig, damit der Frontend-Container (Nginx) den Backend-Container auf Port `3000` erreichen kann.
+
+### Thema: Umstellung auf Datenbank-Persistenz (PostgreSQL)
+
+#### 1. Welche Anpassungen waren im Backend-Code (spezifisch im Service Layer oder den Route-Handlern) notwendig, um von der File-basierten Persistenz auf die Datenbank-Persistenz umzusteigen?
+
+Die Umstellung von File-basierter Persistenz auf Datenbank-Persistenz im Backend erforderte mehrere Kernanpassungen, hauptsächlich in den Route-Handlern (da in diesem Projekt kein expliziter Service-Layer für die CRUD-Logik abgetrennt wurde, sondern diese direkt in den Express-Routen-Handlern lag):
+
+1.  **Entfernung der Dateizugriffslogik:**
+    *   Alle Funktionen und Code-Teile, die für das Lesen aus und Schreiben in die JSON-Datei (`notes-data.json`) zuständig waren (z.B. `readDataFromFile`, `writeDataToFile`), wurden entfernt.
+    *   Die Initialisierung der `notes`-Variable und `nextId` aus der Datei beim Start entfiel.
+
+2.  **Integration des `pg`-Treibers und Connection Pools:**
+    *   Der `pg`-Treiber musste importiert werden (`const { Pool } = require('pg');`).
+    *   Ein `Pool`-Objekt wurde mit den Datenbank-Verbindungsparametern (aus Umgebungsvariablen) initialisiert. Dieser Pool verwaltet die Datenbankverbindungen.
+
+3.  **Umschreiben der CRUD-Operationen:**
+    *   **`GET /api/notes` (Alle Notizen abrufen):** Statt die `notes`-Variable aus dem Speicher zurückzugeben, wird nun eine SQL `SELECT * FROM notes ORDER BY created_at DESC` Abfrage an die Datenbank gesendet. Das Ergebnis der Datenbank wird an den Client gesendet.
+    *   **`POST /api/notes` (Neue Notiz erstellen):** Statt ein neues Objekt zum `notes`-Array hinzuzufügen und in die Datei zu schreiben, wird nun eine SQL `INSERT INTO notes (text_content) VALUES ($1) RETURNING *` Abfrage ausgeführt. Die Benutzereingabe (`text`) wird als Parameter übergeben. Das von der Datenbank zurückgegebene neue Notizobjekt wird an den Client gesendet.
+    *   **`DELETE /api/notes/:id` (Notiz löschen):** Statt das Element aus dem `notes`-Array zu filtern und in die Datei zu schreiben, wird nun eine SQL `DELETE FROM notes WHERE id = $1 RETURNING id` Abfrage ausgeführt. Die ID wird als Parameter übergeben.
+
+4.  **Asynchrone Operationen:**
+    *   Alle Datenbankoperationen sind asynchron. Daher mussten die Route-Handler zu `async` Funktionen umgeschrieben werden, und `await` wurde verwendet, um auf die Ergebnisse von `pool.query()` zu warten.
+
+5.  **Fehlerbehandlung:**
+    *   `try...catch`-Blöcke wurden um die Datenbankabfragen implementiert, um potenzielle Fehler (z.B. Verbindungsfehler, SQL-Syntaxfehler) abzufangen.
+    *   Abgefangene Fehler werden geloggt und über `next(err)` an den zentralen Express-Fehlerhandler weitergeleitet, um eine konsistente Fehlerantwort an den Client zu senden (z.B. HTTP 500).
+
+6.  **Datenstruktur-Anpassung:**
+    *   Die Struktur der von der Datenbank zurückgegebenen Objekte musste ggf. leicht angepasst werden (z.B. `text_content` aus der DB wurde als `text` an das Frontend gesendet, um die bestehende Frontend-Logik beizubehalten: `SELECT id, text_content AS text, ...`).
+
+#### 2. Warum ist die Nutzung eines Connection Pools (`pg.Pool`) eine Best Practice, wenn deine API viele Datenbankabfragen verarbeiten muss, verglichen mit einer einzelnen `pg.Client`-Instanz?
+
+Die Nutzung eines Connection Pools (`pg.Pool`) anstelle einer einzelnen `pg.Client`-Instanz ist eine Best Practice aus mehreren Gründen, besonders bei APIs mit vielen gleichzeitigen Anfragen:
+
+1.  **Effizienz und Performance:**
+    *   **Wiederverwendung von Verbindungen:** Das Aufbauen einer neuen Datenbankverbindung ist ein ressourcenintensiver Vorgang (Netzwerk-Handshake, Authentifizierung etc.). Ein Connection Pool erstellt eine bestimmte Anzahl von Verbindungen im Voraus und hält sie offen. Wenn eine Anfrage eine Datenbankverbindung benötigt, leiht sie sich eine aus dem Pool und gibt sie nach Gebrauch zurück. Dies vermeidet den Overhead des ständigen Auf- und Abbaus von Verbindungen für jede einzelne Anfrage.
+    *   **Reduzierte Latenz:** Da Verbindungen bereits bestehen, ist die Latenz für die Ausführung einer Abfrage geringer.
+
+2.  **Ressourcenmanagement:**
+    *   **Begrenzung der Verbindungsanzahl:** Datenbankserver können nur eine begrenzte Anzahl gleichzeitiger Verbindungen verwalten. Ohne Pool könnte eine API unter Last versuchen, zu viele Verbindungen zu öffnen, was den Datenbankserver überlasten oder zu Verbindungsfehlern führen kann. Ein Pool limitiert die maximale Anzahl der aktiven Verbindungen zur Datenbank.
+    *   **Vermeidung von Connection Leaks:** Der Pool hilft, Verbindungen ordnungsgemäß zu verwalten und freizugeben, was das Risiko von "hängenden" oder nicht geschlossenen Verbindungen reduziert.
+
+3.  **Skalierbarkeit und Robustheit:**
+    *   **Bessere Handhabung von Lastspitzen:** Der Pool kann kurzzeitige Lastspitzen besser abfedern, indem Anfragen auf die verfügbaren Verbindungen verteilt werden. Wenn alle Verbindungen im Pool belegt sind, können neue Anfragen entweder warten (bis eine Verbindung frei wird) oder es kann ein Fehler ausgelöst werden, je nach Konfiguration des Pools.
+    *   **Automatische Wiederverbindung (teilweise):** Einige Pool-Implementierungen können fehlerhafte Verbindungen erkennen, schließen und versuchen, neue zu öffnen, was die Robustheit der Anwendung erhöht.
+
+Im Gegensatz dazu würde eine einzelne `pg.Client`-Instanz:
+*   Entweder für jede API-Anfrage eine neue Verbindung aufbauen und wieder schließen müssen (sehr ineffizient).
+*   Oder eine einzige, langlebige Verbindung verwenden, die dann zum Flaschenhals wird, da alle Datenbankabfragen serialisiert über diese eine Verbindung laufen müssten, was die Parallelität stark einschränkt.
+
+#### 3. Erkläre anhand eines Beispiels aus deinem Code, wie du SQL Injection bei einer Abfrage, die Benutzereingaben verwendet (z.B. beim Abrufen eines Items nach ID oder beim Erstellen eines Items), vermieden hast. Warum ist dies wichtig?
+
+SQL Injection wurde durch die Verwendung von **parametrisierten Abfragen** (auch Prepared Statements genannt) vermieden.
+
+**Beispiel aus dem Code (Erstellen einer neuen Notiz):**
+```javascript
+// filepath: backend/server.js
+// ...
+app.post('/api/notes', async (req, res, next) => {
+  const { text } = req.body; // Benutzereingabe
+  if (!text) {
+    // ... Fehlerbehandlung ...
+  }
+  try {
+    const result = await pool.query(
+      'INSERT INTO notes (text_content) VALUES ($1) RETURNING id, text_content AS text, created_at, updated_at',
+      [text] // Die Benutzereingabe wird als separater Parameter übergeben
+    );
+    const newNote = result.rows[0];
+    // ...
+  } catch (err) {
+    // ...
+  }
+});
+// ...
+```
+**Erläuterung:**
+1.  Der SQL-Befehl `INSERT INTO notes (text_content) VALUES ($1) ...` enthält einen Platzhalter `$1`.
+2.  Die tatsächliche Benutzereingabe (`text` aus `req.body`) wird als zweites Argument an `pool.query()` in einem Array übergeben: `[text]`.
+3.  Der `pg`-Treiber (oder die Datenbank selbst) behandelt diesen Wert nun als reinen Datenwert und nicht als Teil des SQL-Codes. Selbst wenn `text` bösartigen SQL-Code enthalten würde (z.B. `'); DROP TABLE notes; --`), würde dieser nicht ausgeführt, sondern als Text in die Spalte `text_content` eingefügt.
+
+**Warum ist dies wichtig?**
+SQL Injection ist eine der häufigsten und gefährlichsten Sicherheitslücken in Webanwendungen. Wenn Benutzereingaben direkt und unverarbeitet in SQL-Abfragen konkateniert (zusammengefügt) würden, könnte ein Angreifer manipulierte Eingaben senden, um:
+*   **Daten zu stehlen:** Zugriff auf sensible Informationen aus der Datenbank erlangen (z.B. Benutzerdaten, Passwörter).
+*   **Daten zu modifizieren:** Unbefugt Datensätze ändern oder löschen.
+*   **Datenbankstruktur zu zerstören:** Tabellen löschen (`DROP TABLE`) oder die gesamte Datenbank kompromittieren.
+*   **Administrative Kontrolle über den Datenbankserver zu erlangen.**
+
+Parametrisierte Abfragen stellen sicher, dass die Datenbank zwischen dem eigentlichen SQL-Befehl und den Daten, die verarbeitet werden sollen, klar unterscheidet. Dies ist die primäre und effektivste Methode, um SQL Injection zu verhindern.
+
+#### 4. Beschreibe den manuellen Prozess, den du in dieser Aufgabe durchgeführt hast, um das initiale Datenbank-Schema zu erstellen. Welche Nachteile siehst du bei diesem manuellen Prozess, wenn sich das Schema in Zukunft ändern würde oder wenn du in einem Team arbeitest?
+
+**Manueller Prozess zur Schema-Erstellung:**
+
+1.  **SQL-Datei schreiben:** Die `CREATE TABLE`-Anweisungen (und ggf. `CREATE FUNCTION`, `CREATE TRIGGER`) wurden in eine lokale `.sql`-Datei geschrieben (z.B. `backend/sql/initial_schema.sql`).
+2.  **Datei in den Container kopieren:** Die `.sql`-Datei wurde mit `docker cp backend/sql/initial_schema.sql <container_name>:/tmp/initial_schema.sql` in den laufenden PostgreSQL-Container kopiert.
+3.  **SQL-Datei im Container ausführen:** Mit `docker exec -u <db_user_im_container> <container_name> psql -U <db_user_in_db> -d <db_name> -f /tmp/initial_schema.sql` wurde der `psql`-Client im Container aufgerufen, um die zuvor kopierte `.sql`-Datei auszuführen und so die Tabellen zu erstellen. Hierbei mussten der korrekte Datenbankbenutzer und der Pfad zur Datei im Container beachtet werden. Die Umgebungsvariable `MSYS_NO_PATHCONV=1` war in MINGW64 notwendig, um Pfadkonvertierungsprobleme zu umgehen.
+
+**Nachteile des manuellen Prozesses:**
+
+1.  **Fehleranfälligkeit:**
+    *   Manuelle Eingaben von Befehlen können leicht zu Tippfehlern führen.
+    *   Es ist leicht, einen Schritt zu vergessen oder in der falschen Reihenfolge auszuführen.
+    *   Die korrekten Benutzernamen, Datenbanknamen und Pfade müssen jedes Mal genau stimmen.
+
+2.  **Nicht reproduzierbar und inkonsistent:**
+    *   Wenn das Setup auf einer neuen Maschine oder von einem anderen Teammitglied wiederholt werden muss, ist es schwierig sicherzustellen, dass genau die gleichen Schritte ausgeführt werden. Dies kann zu inkonsistenten Datenbankzuständen führen.
+    *   Es gibt keine automatische Versionierung des Schemas.
+
+3.  **Schwierige Schema-Evolution (Migrationen):**
+    *   Wenn sich das Schema ändert (z.B. eine Spalte hinzufügen, eine Tabelle umbenennen), ist der manuelle Prozess noch komplexer. Man müsste `ALTER TABLE`-Befehle schreiben und manuell ausführen.
+    *   Es gibt keine einfache Möglichkeit, den aktuellen Stand des Schemas nachzuverfolgen oder zu einer früheren Version zurückzukehren.
+    *   Das Risiko, bestehende Daten bei Schemaänderungen zu beschädigen oder zu verlieren, ist hoch.
+
+4.  **Schlechte Teamarbeit:**
+    *   Es ist schwer zu koordinieren, wer wann welche Schemaänderungen vornimmt.
+    *   Es gibt keine zentrale, versionierte Quelle der Wahrheit für das Datenbankschema.
+    *   Neue Teammitglieder müssen den manuellen Prozess erst erlernen.
+
+5.  **Zeitaufwand:** Für wiederholte Setups oder häufige Änderungen ist der manuelle Prozess zeitaufwendig.
+
+**Alternative:** Für diese Probleme gibt es Werkzeuge für **Datenbankmigrationen** (z.B. Flyway, Liquibase, Knex.js Migrations, Sequelize Migrations, TypeORM Migrations). Diese Werkzeuge erlauben es, Schemaänderungen in versionierten Skripten zu definieren, die automatisch und konsistent angewendet werden können.
+
+#### 5. Wie hast du in diesem Setup sichergestellt, dass die Datenbank läuft und (wahrscheinlich) bereit ist, bevor dein Backend-Service startet?
+
+In diesem Setup wurde die Bereitschaft der Datenbank vor dem Start des Backend-Services durch zwei Mechanismen in der `docker-compose.yml`-Datei sichergestellt:
+
+1.  **`depends_on` mit `condition: service_healthy`:**
+    Im `backend`-Service wurde eine `depends_on`-Klausel für den `database`-Service hinzugefügt:
+    ```yaml
+    // filepath: docker-compose.yml
+    # ...
+    services:
+      # ...
+      backend:
+        # ...
+        depends_on:
+          database:
+            condition: service_healthy # Backend startet erst, wenn DB "healthy" ist
+      # ...
+    ```
+    Diese Konfiguration weist Docker Compose an, den `backend`-Container erst zu starten, nachdem der `database`-Container den Status "healthy" erreicht hat.
+
+2.  **`healthcheck` im `database`-Service:**
+    Damit die `condition: service_healthy` funktioniert, muss der `database`-Service einen `healthcheck` definieren. Dieser wurde wie folgt konfiguriert:
+    ```yaml
+    // filepath: docker-compose.yml
+    # ...
+    services:
+      database:
+        # ...
+        healthcheck:
+          test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} -q"]
+          interval: 10s
+          timeout: 5s
+          retries: 5
+          start_period: 10s
+      # ...
+    ```
+    *   `test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} -q"]`: Dieser Befehl wird periodisch im Datenbank-Container ausgeführt. `pg_isready` ist ein PostgreSQL-Utility, das prüft, ob der Server Verbindungen akzeptiert. Die Option `-q` (quiet) sorgt dafür, dass bei Erfolg kein Output erfolgt und der Exit-Code 0 ist (was "healthy" signalisiert).
+    *   `interval`, `timeout`, `retries`, `start_period`: Diese Parameter steuern, wie oft der Healthcheck ausgeführt wird, wie lange er auf eine Antwort wartet, wie oft er wiederholt wird, bevor der Container als "unhealthy" markiert wird, und eine anfängliche Wartezeit, bevor die Healthchecks beginnen (um der Datenbank Zeit zum Initialisieren zu geben).
