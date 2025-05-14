@@ -34,11 +34,21 @@ services:
       DB_NAME: ${POSTGRES_DB} # Wert kommt aus .env (derselbe wie für den DB-Service)
     expose:
       - "3000"
-    depends_on: # Geändert/Hinzugefügt
+    depends_on:
       database:
         condition: service_healthy
     volumes:
-      - ./backend/data:/usr/src/app/data
+      - ./backend/data:/usr/src/app/data # Dieses Volume ist für die Notizen-Daten nicht mehr primär, kann aber für andere Zwecke bleiben
+      - ./backend/src:/usr/src/app/src # Für Hot-Reloading der Backend-Quellen (optional)
+      - ./backend/config:/usr/src/app/config # Für Hot-Reloading der Backend-Config (optional)
+      - ./backend/package.json:/usr/src/app/package.json
+      - ./backend/package-lock.json:/usr/src/app/package-lock.json
+    healthcheck: # Hinzugefügt für das Backend
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"]
+      interval: 30s # Prüfe alle 30 Sekunden
+      timeout: 10s  # Warte maximal 10 Sekunden auf eine Antwort
+      retries: 3    # Versuche es 3 Mal, bevor als "unhealthy" markiert wird
+      start_period: 30s # Gib dem Container 30 Sekunden Zeit zum Starten, bevor der Healthcheck fehlschlagen kann
 
   frontend:
     build:

@@ -60,6 +60,16 @@ if (DB_HOST && DB_PORT && DB_USER && DB_NAME) {
 app.use(cors());
 app.use(express.json());
 
+// --- Health Check Endpoint ---
+app.get('/health', (req, res) => {
+  // Für einen einfachen Healthcheck reicht es, 200 OK zu senden.
+  // Optional: Hier könntest du komplexere Prüfungen einbauen,
+  // z.B. ob die Datenbankverbindung noch besteht (pool.query('SELECT 1')).
+  // Bei Fehlern könntest du dann einen 503 Service Unavailable senden.
+  logger.info('GET /health - Health check successful');
+  res.status(200).json({ status: 'UP' });
+});
+
 // --- API Endpoints ---
 // GET all notes
 app.get('/api/notes', async (req, res, next) => {
@@ -90,6 +100,41 @@ app.post('/api/notes', async (req, res, next) => {
     res.status(201).json(newNote);
   } catch (err) {
     logger.error('Error adding note to DB', { error: err.message, stack: err.stack });
+    next(err);
+  }
+});
+
+// PUT (update) an existing note by id
+app.put('/api/notes/:id', async (req, res, next) => {
+  const idToUpdate = parseInt(req.params.id, 10);
+  const { text } = req.body;
+
+  if (isNaN(idToUpdate)) {
+    logger.warn(`PUT /api/notes/${req.params.id} - Invalid ID format`);
+    return res.status(400).json({ error: 'Invalid ID format' });
+  }
+
+  if (!text) {
+    logger.warn(`PUT /api/notes/${idToUpdate} - Bad Request: Note text is required for update`);
+    return res.status(400).json({ error: 'Note text is required' });
+  }
+
+  try {
+    const result = await pool.query(
+      'UPDATE notes SET text_content = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id, text_content AS text, created_at, updated_at',
+      [text, idToUpdate]
+    );
+
+    if (result.rowCount > 0) {
+      const updatedNote = result.rows[0];
+      logger.info(`PUT /api/notes/${idToUpdate} - Note updated successfully`, { noteId: updatedNote.id });
+      res.json(updatedNote);
+    } else {
+      logger.warn(`PUT /api/notes/${idToUpdate} - Note not found for update`);
+      res.status(404).json({ error: 'Note not found' });
+    }
+  } catch (err) {
+    logger.error(`Error updating note ${idToUpdate} in DB`, { error: err.message, stack: err.stack });
     next(err);
   }
 });

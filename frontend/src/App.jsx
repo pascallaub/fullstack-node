@@ -73,12 +73,45 @@ function App() {
     }
   };
 
+  const handleUpdateNote = async (id, updatedText) => {
+    try {
+      console.log(`Updating note ${id} at ${API_URL}/notes/${id} with text: "${updatedText}"`);
+      const response = await fetch(`${API_URL}/notes/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text: updatedText }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const updatedNoteFromServer = await response.json();
+      setNotes(prevNotes =>
+        prevNotes.map(note =>
+          note.id === id ? updatedNoteFromServer : note
+        )
+      );
+      setError(null);
+    } catch (e) {
+      console.error("Failed to update note:", e);
+      setError(`Failed to update note: ${e.message}`);
+    }
+  };
+
   return (
     <div style={{ padding: '2rem', maxWidth: '600px', margin: 'auto' }}>
       <h1>Mini-Notizblock (Full-Stack mit Proxy)</h1>
       <NoteInput onAdd={addNote} />
       {error && <p style={{ color: 'red' }}>{error}</p>}
-      <NoteList notes={notes} onDelete={deleteNote} />
+      <NoteList
+        notes={notes}
+        onDelete={deleteNote}
+        onUpdate={handleUpdateNote} // Die neue Funktion als Prop übergeben
+      />
     </div>
   );
 }
