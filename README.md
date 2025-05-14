@@ -10,7 +10,7 @@ Dieses Projekt demonstriert eine einfache Full-Stack-Notizanwendung.
 ## Theoretisches Datenbankmodell (SQL Recap)
 
 Für dieses Projekt wurde als theoretische Übung ein relationales Datenmodell für die Notizen-Funktionalität entworfen. Dieses Modell definiert Tabellen für Benutzer (`users`) und Notizen (`notes`) mit entsprechenden Spalten, Datentypen, Primärschlüsseln und einer Fremdschlüsselbeziehung, um darzustellen, wie die Daten in einer relationalen SQL-Datenbank strukturiert wären. Es beinhaltet auch beispielhafte SQL-CRUD-Abfragen (Create, Read, Update, Delete) für diese Tabellen.
-Die detaillierte Ausarbeitung dieses theoretischen Datenbankmodells und der SQL-Abfragen finden Sie in der Datei [sql-recap.md](sql-recap.md) im Hauptverzeichnis dieses Repositories.
+Die detaillierte Ausarbeitung dieses theoretische Datenbankmodells und der SQL-Abfragen finden Sie in der Datei [sql-recap.md](sql-recap.md) im Hauptverzeichnis dieses Repositories.
 
 ## Anwendung mit Docker Compose starten
 
@@ -147,6 +147,95 @@ Dieser Abschnitt beschreibt, wie Frontend und Backend separat ohne Docker ausgef
     *   Build-Argument `VITE_API_URL`: Auf `/api` gesetzt für Nginx Reverse Proxy.
     *   Ports: Mappt Host-Port `8080` auf Container-Port `80` (Nginx).
     *   Abhängig von: `backend`-Service.
+
+## Finaler Zustand des Stacks & Verifizierung
+
+Der Anwendungsstack ist nun eine vollständige Full-Stack-Anwendung mit Frontend, Backend und einer persistenten Datenbank, die alle über Docker Compose orchestriert werden. Die wichtigsten Merkmale sind:
+
+*   **Frontend:** Eine React-Anwendung (erstellt mit Vite), die von einem Nginx-Server in einem Docker-Container bereitgestellt wird. Sie kommuniziert mit dem Backend über einen Reverse Proxy, der von Nginx gehandhabt wird.
+*   **Backend:** Eine Node.js/Express-API, die in einem eigenen Docker-Container läuft. Sie ist verantwortlich für die Geschäftslogik und die Kommunikation mit der Datenbank.
+*   **Datenbank:** Ein PostgreSQL-Datenbankserver, der in einem Docker-Container läuft und für die persistente Speicherung der Notizdaten zuständig ist. Die Daten bleiben auch nach einem Neustart der Container erhalten, dank eines benannten Docker-Volumes.
+*   **CRUD-Operationen:** Die Anwendung unterstützt vollständige CRUD-Funktionalität (Create, Read, Update, Delete) für Notizen.
+*   **Healthchecks:**
+    *   Der **Datenbank-Container** hat einen Healthcheck (`pg_isready`), um sicherzustellen, dass er bereit ist, Verbindungen anzunehmen.
+    *   Der **Backend-Container** hat einen Healthcheck (`curl` auf einen `/health`-Endpunkt), um sicherzustellen, dass die API-Anwendung läuft und auf Anfragen reagiert.
+*   **Abhängigkeitsmanagement:** Docker Compose stellt sicher, dass das Backend erst startet, wenn die Datenbank "healthy" ist, und das Frontend (optional, aber gute Praxis) erst, wenn das Backend "healthy" ist (obwohl in der aktuellen `docker-compose.yml` das Frontend nicht explizit auf den Healthcheck des Backends wartet, was für die meisten Setups mit Nginx als Proxy für statische Dateien und API-Weiterleitung ausreichend ist).
+
+### Stack starten
+
+1.  **Voraussetzung:** Stelle sicher, dass du eine `.env`-Datei im Wurzelverzeichnis des Projekts (`node-container/.env`) mit den notwendigen Datenbank-Zugangsdaten erstellt hast (siehe Abschnitt "Anwendung mit Docker Compose starten").
+2.  **Befehl:** Navigiere in deinem Terminal zum Wurzelverzeichnis des Projekts (`node-container/`) und führe folgenden Befehl aus:
+    ```bash
+    docker-compose up --build -d
+    ```
+    *   `--build`: Stellt sicher, dass alle Images neu gebaut werden, falls Änderungen an den Dockerfiles oder dem Anwendungscode vorgenommen wurden.
+    *   `-d`: Startet die Container im Hintergrund.
+
+### Verifizierung der Funktionalität
+
+#### 1. Healthchecks überprüfen
+
+Nachdem die Container gestartet sind, öffne ein Terminal und führe folgenden Befehl aus:
+
+```bash
+docker ps
+```
+
+Du solltest eine Ausgabe ähnlich dieser sehen, die anzeigt, dass alle relevanten Dienste laufen und "healthy" sind:
+
+```
+CONTAINER ID   IMAGE                     COMMAND                  CREATED          STATUS                    PORTS                    NAMES
+<id>           node-container-frontend   "/docker-entrypoint.…"   X seconds/minutes ago   Up X seconds/minutes      0.0.0.0:8080->80/tcp     frontend-app
+<id>           node-container-backend    "docker-entrypoint.s…"   X seconds/minutes ago   Up X seconds/minutes (healthy)   3000/tcp                 backend-api
+<id>           postgres:17-alpine        "docker-entrypoint.s…"   X seconds/minutes ago   Up X seconds/minutes (healthy)   0.0.0.0:5433->5432/tcp   mini_notizblock_db_service
+```
+
+*   Achte auf `(healthy)` in der `STATUS`-Spalte für `backend-api` und `mini_notizblock_db_service`.
+*   Der `frontend-app`-Container hat keinen expliziten Healthcheck in dieser Konfiguration, aber sein Laufen (`Up X minutes`) ist ein gutes Zeichen.
+
+#### 2. Ende-zu-Ende Funktionalität (CRUD-Operationen)
+
+1.  **Anwendung öffnen:** Öffne deinen Webbrowser und navigiere zu `http://localhost:8080`. Die Notiz-Anwendung sollte geladen werden.
+
+    *Die laufende Anwendung im Browser, die alle CRUD-Operationen demonstriert:*
+
+    ![Laufende Anwendung mit CRUD-Funktionen](/public/beispiel.png)
+
+2.  **Create (Erstellen):**
+    *   Gib einen Text in das Eingabefeld für neue Notizen ein.
+    *   Klicke auf "Notiz hinzufügen".
+    *   **Verifizierung:** Die neue Notiz sollte in der Liste erscheinen. Überprüfe optional die Backend-Logs (`docker-compose logs -f backend`), um die `POST`-Anfrage zu sehen.
+
+3.  **Read (Lesen):**
+    *   **Verifizierung:** Beim Laden der Seite sollten alle zuvor erstellten (und nicht gelöschten) Notizen aus der Datenbank abgerufen und angezeigt werden.
+
+4.  **Update (Aktualisieren):**
+    *   Klicke auf den "Bearbeiten"-Button einer bestehenden Notiz.
+    *   Ändere den Text im nun erscheinenden Eingabefeld.
+    *   Klicke auf "Speichern".
+    *   **Verifizierung:** Der Text der Notiz in der Liste sollte sich aktualisiert haben. Überprüfe optional die Backend-Logs für die `PUT`-Anfrage.
+
+5.  **Delete (Löschen):**
+    *   Klicke auf den "Löschen"-Button einer bestehenden Notiz.
+    *   **Verifizierung:** Die Notiz sollte aus der Liste verschwinden. Überprüfe optional die Backend-Logs für die `DELETE`-Anfrage.
+
+#### 3. Persistenz der Daten überprüfen
+
+1.  Füge einige Notizen hinzu, bearbeite oder lösche welche.
+2.  Stoppe den gesamten Stack:
+    ```bash
+    docker-compose down
+    ```
+    (Dieser Befehl entfernt die Container, aber **nicht** das benannte Volume `postgres_db_data`, in dem die Datenbankdaten gespeichert sind).
+3.  Starte den Stack erneut:
+    ```bash
+    docker-compose up -d
+    ```
+    (Ein `--build` ist hier nicht unbedingt nötig, wenn keine Code-Änderungen vorgenommen wurden).
+4.  Öffne die Anwendung erneut unter `http://localhost:8080`.
+5.  **Verifizierung:** Alle Notizen, die vor dem Stoppen des Stacks vorhanden waren (und nicht gelöscht wurden), sollten immer noch da sein. Dies bestätigt, dass die Daten in der PostgreSQL-Datenbank persistent gespeichert werden.
+
+Wenn alle diese Schritte erfolgreich sind, ist dein Full-Stack-Anwendungsstack mit Datenbankpersistenz und Healthchecks voll funktionsfähig!
 
 ## Reflexionen
 
@@ -426,6 +515,7 @@ In diesem Setup wurde die Bereitschaft der Datenbank vor dem Start des Backend-S
             condition: service_healthy # Backend startet erst, wenn DB "healthy" ist
       # ...
     ```
+
     Diese Konfiguration weist Docker Compose an, den `backend`-Container erst zu starten, nachdem der `database`-Container den Status "healthy" erreicht hat.
 
 2.  **`healthcheck` im `database`-Service:**
@@ -444,5 +534,6 @@ In diesem Setup wurde die Bereitschaft der Datenbank vor dem Start des Backend-S
           start_period: 10s
       # ...
     ```
+
     *   `test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} -q"]`: Dieser Befehl wird periodisch im Datenbank-Container ausgeführt. `pg_isready` ist ein PostgreSQL-Utility, das prüft, ob der Server Verbindungen akzeptiert. Die Option `-q` (quiet) sorgt dafür, dass bei Erfolg kein Output erfolgt und der Exit-Code 0 ist (was "healthy" signalisiert).
     *   `interval`, `timeout`, `retries`, `start_period`: Diese Parameter steuern, wie oft der Healthcheck ausgeführt wird, wie lange er auf eine Antwort wartet, wie oft er wiederholt wird, bevor der Container als "unhealthy" markiert wird, und eine anfängliche Wartezeit, bevor die Healthchecks beginnen (um der Datenbank Zeit zum Initialisieren zu geben).
