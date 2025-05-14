@@ -12,6 +12,9 @@ COPY package.json package-lock.json ./
 # --omit=dev skips installing development dependencies
 RUN npm ci --omit=dev
 
+# Install curl
+RUN apk add --no-cache curl
+
 # Bundle app source
 COPY . .
 

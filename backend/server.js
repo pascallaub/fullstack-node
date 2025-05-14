@@ -62,10 +62,6 @@ app.use(express.json());
 
 // --- Health Check Endpoint ---
 app.get('/health', (req, res) => {
-  // Für einen einfachen Healthcheck reicht es, 200 OK zu senden.
-  // Optional: Hier könntest du komplexere Prüfungen einbauen,
-  // z.B. ob die Datenbankverbindung noch besteht (pool.query('SELECT 1')).
-  // Bei Fehlern könntest du dann einen 503 Service Unavailable senden.
   logger.info('GET /health - Health check successful');
   res.status(200).json({ status: 'UP' });
 });

@@ -1,4 +1,3 @@
--- filepath: backend/sql/initial_schema.sql
 CREATE TABLE IF NOT EXISTS notes (
     id SERIAL PRIMARY KEY,
     text_content TEXT NOT NULL,
