@@ -862,5 +862,3 @@ Die Bedeutung von Code-Struktur, sauberem Code und dem Entfernen von Altlasten k
   - Altlasten können zu falschen Annahmen über das Systemverhalten führen und die Fehlersuche in die falsche Richtung lenken. Wenn beispielsweise eine alte, auskommentierte Fehlerbehandlung noch im Code vorhanden ist, könnte ein Entwickler fälschlicherweise annehmen, dass dieser Pfad noch relevant ist.
 
 Zusammenfassend lässt sich sagen, dass Investitionen in sauberen Code, eine klare Struktur und das konsequente Entfernen von Altlasten sich exponentiell auszahlen, sobald die Komplexität steigt oder Fehler auftreten. Es ist eine Grundlage für effiziente Teamarbeit, schnellere Fehlerbehebung und eine nachhaltig wartbare Software.
-
-<!-- ... (ggf. weitere Reflexionsabschnitte oder Abschluss der README.md) ... -->
