@@ -61,9 +61,15 @@ app.use(cors());
 app.use(express.json());
 
 // --- Health Check Endpoint ---
-app.get('/health', (req, res) => {
-  logger.info('GET /health - Health check successful');
-  res.status(200).json({ status: 'UP' });
+app.get('/health', async (req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    logger.info('Health check passed');
+    res.status(200).json({ status: 'UP', database: 'connected' });
+  } catch (dbError) {
+    logger.error('Health check failed', { error: dbError.message, stack: dbError.stack });
+    res.status(500).json({ status: 'DOWN', database: 'not connected', error: dbError.message });
+  }
 });
 
 // --- API Endpoints ---
