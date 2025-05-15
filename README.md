@@ -209,7 +209,7 @@ docker ps
 
 _Der `docker ps` Output zeigt alle laufenden Container mit ihrem Status, inklusive der Healthchecks:_
 
-![Docker PS Healthy Status](/public/dockerPs.png)
+![Docker PS Healthy Status](./frontend/public/dockerPs.png)
 
 ```
 CONTAINER ID   IMAGE                     COMMAND                  CREATED          STATUS                    PORTS                    NAMES
@@ -243,7 +243,7 @@ Um das Verhalten der Dienste detailliert zu verfolgen, sind die Logs unerlässli
 
     _Die laufende Anwendung im Browser, die alle CRUD-Operationen demonstriert:_
 
-    ![Laufende Anwendung mit CRUD-Funktionen](/public/beispiel.png)
+    ![Laufende Anwendung mit CRUD-Funktionen](./frontend/public/beispiel.png)
 
 2.  **Create (Erstellen):**
     - Gib einen Text ein und klicke "Notiz hinzufügen".
@@ -276,7 +276,7 @@ Dieser Test simuliert einen temporären Ausfall der Datenbank und prüft, wie de
 
       _Das Frontend zeigt eine Fehlermeldung an, wenn die Datenbank nicht erreichbar ist, stürzt aber nicht ab:_
 
-      ![Frontend bei Datenbankausfall](/public/dbDown.png)
+      ![Frontend bei Datenbankausfall](./frontend/public/dbDown.png)
 
       - _Grund:_ Die `fetch`-Aufrufe im Frontend erhalten Fehlerantworten vom Backend (z.B. HTTP 503 oder 500). Die `try...catch`-Blöcke in `App.jsx` fangen diese Fehler ab und setzen den `error`-State, der die Meldung anzeigt.
 
