@@ -163,7 +163,180 @@ npm run dev
   - Ports: Mappt Host-Port `8080` auf Container-Port `80` (Nginx).
   - Abhängig von: `backend`-Service.
 
-## Finaler Zustand des Stacks & Verifizierung der Robustheit
+## Deployment und Betrieb mit Docker Swarm
+
+Der Anwendungsstack ist als robuste, containerisierte Full-Stack-Anwendung konzipiert, die für die Orchestrierung mit Docker Swarm vorbereitet ist. Dies ermöglicht eine verteilte Bereitstellung über mehrere Nodes (Server/VMs), eine verbesserte Ausfallsicherheit und eine gezielte Platzierung der Dienste.
+
+### Aktueller Zustand des Stacks für Swarm
+
+- **Robustheit:** Die Anwendung verfügt über eine solide Fehlerbehandlung im Frontend und Backend.
+- **Healthchecks:** Aussagekräftige Healthchecks für Backend und Datenbank stellen sicher, dass Swarm den tatsächlichen Zustand der Dienste überwachen und darauf reagieren kann. Das Backend prüft aktiv die Datenbankverbindung.
+- **Node-Platzierung:** Die `stack.yml`-Datei ist so konfiguriert, dass die einzelnen Dienste (Frontend, Backend, Datenbank) auf spezifischen Nodes im Swarm-Cluster platziert werden können, basierend auf Node-Labels.
+- **Persistenz:** Datenbankdaten werden über Docker Volumes persistent gespeichert, die an den entsprechenden Datenbank-Node gebunden sind.
+
+### Docker Swarm einrichten (Beispiel mit 3 Nodes)
+
+Die folgenden Schritte beschreiben die Einrichtung eines Docker Swarm Clusters, bestehend aus einem Manager-Node und zwei Worker-Nodes.
+
+**Voraussetzungen:**
+
+- Mindestens eine (für einen Single-Node-Swarm) oder idealerweise mehrere Maschinen (physisch oder VMs) mit Docker installiert. Für dieses Beispiel verwenden wir drei VMs: `manager`, `worker1`, `worker2`, `worker3`.
+- Die Nodes müssen untereinander im Netzwerk erreichbar sein (entsprechende Firewall-Regeln ggf. anpassen).
+- SSH-Zugriff auf alle Maschinen.
+
+**1. Swarm Manager initialisieren:**
+
+Verbinde dich per SSH mit der Maschine, die als Manager dienen soll (z.B. `manager`), und führe folgenden Befehl aus:
+
+```bash
+docker swarm init --advertise-addr <MANAGER_IP_ADRESSE>
+```
+
+- Ersetze `<MANAGER_IP_ADRESSE>` mit der IP-Adresse des Manager-Nodes, über die andere Nodes ihn erreichen können.
+- Docker gibt einen `docker swarm join` Befehl mit einem Token aus. **Kopiere diesen Befehl, du benötigst ihn für die Worker-Nodes.**
+
+**2. Worker-Nodes dem Swarm hinzufügen:**
+
+Verbinde dich per SSH mit jeder Maschine, die als Worker-Node dienen soll (z.B. `worker1`, `worker2`, `worker3`). Führe auf jedem Worker den zuvor kopierten `docker swarm join` Befehl aus:
+
+```bash
+docker swarm join --token <TOKEN> <MANAGER_IP_ADRESSE>:<MANAGER_PORT>
+```
+
+- `<TOKEN>`, `<MANAGER_IP_ADRESSE>` und `<MANAGER_PORT>` sind die Werte aus der Ausgabe von `docker swarm init`.
+
+**3. Nodes im Swarm überprüfen (auf dem Manager):**
+
+Führe auf dem Manager-Node aus:
+
+```bash
+docker node ls
+```
+
+Du solltest alle Nodes (Manager und Worker) mit ihrem Status sehen.
+
+**4. Nodes labeln für die Dienstplatzierung:**
+
+Unsere `stack.yml` verwendet Node-Labels (`role`), um Dienste gezielt zu platzieren. Weise den Nodes entsprechende Labels zu. Führe diese Befehle auf dem **Manager-Node** aus:
+
+```bash
+# Beispiel: worker1 für Frontend, worker2 für Backend, worker3 für Datenbank
+docker node update --label-add role=frontend worker1
+docker node update --label-add role=backend worker2
+docker node update --label-add role=database worker3
+
+# Optional: Den Manager-Node ebenfalls labeln, falls er auch Aufgaben übernehmen soll
+# docker node update --label-add role=manager manager
+```
+
+- Passe die Node-Namen (`worker1`, `worker2`, `worker3`) und die Rollenverteilung nach Bedarf an.
+- Überprüfe die Labels mit `docker node inspect <NODE_NAME> --pretty`.
+
+### Anwendungsstack auf Docker Swarm deployen
+
+**1. Vorbereitung auf dem Manager-Node:**
+
+- **Stack-Dateien übertragen:** Kopiere die `stack.yml`-Datei und deine `.env`-Datei (mit den Datenbank-Zugangsdaten `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`) auf deinen Manager-Node in ein gemeinsames Verzeichnis.
+- **Docker-Images:** Stelle sicher, dass die benötigten Docker-Images (`mephisto1339/frontend-image:latest`, `mephisto1339/backend-image:latest`, `postgres:17-alpine`) entweder in einer öffentlichen Registry (wie Docker Hub) verfügbar sind oder in einer privaten Registry, auf die alle Swarm-Nodes Zugriff haben. Wenn du die Images lokal gebaut hast, musst du sie in eine Registry pushen, damit die Worker-Nodes sie pullen können.
+
+**2. Umgebungsvariablen auflösen (empfohlen):**
+
+Obwohl `docker stack deploy` Umgebungsvariablen aus einer `.env`-Datei im selben Verzeichnis wie die `stack.yml` verwenden kann, ist es eine gute Praxis, die Konfiguration explizit zu verarbeiten, besonders wenn `docker-compose` für die lokale Entwicklung verwendet wurde.
+Installiere `docker-compose` auf dem Manager-Node, falls noch nicht geschehen.
+Navigiere auf dem Manager-Node zum Verzeichnis mit `stack.yml` und `.env` und führe aus:
+
+```bash
+docker-compose -f stack.yml config > processed-stack.yml
+```
+
+Dies erstellt eine `processed-stack.yml`, in der die Variablen aus der `.env`-Datei bereits eingesetzt sind.
+
+**3. Stack deployen:**
+
+Führe auf dem **Manager-Node** folgenden Befehl aus:
+
+```bash
+docker stack deploy -c processed-stack.yml myapp
+```
+
+- `-c processed-stack.yml`: Gibt die zu verwendende Stack-Datei an.
+- `myapp`: Ist der Name, den du deinem Stack gibst.
+
+Docker Swarm wird nun die Dienste gemäß der `processed-stack.yml` (oder direkt `stack.yml`, falls du Schritt 2 überspringst und die Variablen anderweitig bereitstellst) erstellen und auf den gelabelten Nodes verteilen.
+
+### Bereitstellung im Swarm verifizieren
+
+**1. Zugriff auf die Anwendung:**
+
+- Öffne einen Webbrowser und navigiere zu `http://<IP_EINES_BELIEBIGEN_SWARM_NODES>:8080`.
+  - Da der `frontend`-Service den Port `8080` über das Swarm-Routing-Mesh veröffentlicht, sollte die Anwendung über die IP-Adresse jedes beliebigen Nodes im Swarm erreichbar sein.
+- Teste die CRUD-Funktionalitäten (Notizen erstellen, lesen, aktualisieren, löschen).
+
+**2. Korrekte Platzierung und Status der Dienste prüfen:**
+
+Führe auf dem **Manager-Node** folgende Befehle aus:
+
+- **Übersicht aller Dienste im Stack:**
+
+  ```bash
+  docker stack services myapp
+  ```
+
+  Dies zeigt die Anzahl der Replikate (z.B. `1/1` für laufend).
+
+- **Detaillierter Status der Tasks (Container-Instanzen) des Stacks:**
+
+  ```bash
+  docker stack ps myapp
+  ```
+
+  Diese Ausgabe ist sehr nützlich. Sie zeigt:
+
+  - `ID`: Die ID des Tasks.
+  - `NAME`: Der Name des Tasks (z.B. `myapp_frontend.1`).
+  - `IMAGE`: Das verwendete Image.
+  - `NODE`: **Auf welchem Node der Task tatsächlich läuft.** Hier kannst du die korrekte Platzierung gemäß deiner Labels verifizieren.
+  - `DESIRED STATE`: Sollte `Running` sein.
+  - `CURRENT STATE`: Zeigt den aktuellen Zustand (z.B. `Running 5 minutes ago`).
+  - `ERROR`: Zeigt Fehler an, falls ein Task nicht starten konnte oder abgestürzt ist.
+
+- **Status eines einzelnen Dienstes und seiner Tasks:**
+
+  ```bash
+  docker service ps myapp_frontend
+  docker service ps myapp_backend
+  docker service ps myapp_database
+  ```
+
+  Dies gibt ähnliche Informationen wie `docker stack ps myapp`, aber gefiltert für einen spezifischen Dienst.
+
+  _Die Ausgabe von `docker service ps <dienstname>` zeigt den Status der einzelnen Tasks eines Dienstes im Swarm, inklusive des Nodes, auf dem sie laufen:_
+
+  ![Docker Service PS im Swarm](./frontend/public/dockerService.png)
+
+**3. Healthchecks im Swarm-Kontext prüfen:**
+
+- Der `CURRENT STATE` in der Ausgabe von `docker stack ps myapp` oder `docker service ps <service_name>` gibt Aufschluss über den Healthcheck. Wenn ein Task `Running` ist und der Healthcheck im Service definiert ist, bedeutet dies in der Regel, dass der Healthcheck erfolgreich ist.
+- Wenn ein Healthcheck fehlschlägt, wird Swarm versuchen, den Task neu zu starten. Du würdest dann in der `ERROR`-Spalte und in den vorherigen Task-Zuständen (z.B. `Shutdown`, `Failed`) Hinweise darauf sehen.
+
+**4. Logs der Dienste abrufen:**
+
+Um die Logs eines bestimmten Dienstes im Swarm anzuzeigen (z.B. um Fehler zu diagnostizieren oder das Verhalten zu beobachten), führe auf dem **Manager-Node** aus:
+
+```bash
+docker service logs myapp_backend
+# oder für das Frontend
+docker service logs myapp_frontend
+# oder für die Datenbank
+docker service logs myapp_database
+
+# Um die letzten N Zeilen anzuzeigen und live zu verfolgen:
+docker service logs --tail 100 -f myapp_backend
+```
+
+Die Logs werden von allen Tasks des jeweiligen Dienstes aggregiert und auf dem Manager angezeigt.
+
+### Finaler Zustand des Stacks & Verifizierung der Robustheit
 
 Der Anwendungsstack ist nun eine vollständige Full-Stack-Anwendung mit Frontend, Backend und einer persistenten Datenbank, die alle über Docker Compose orchestriert werden. Besonderer Fokus wurde auf Stabilität und Robustheit gelegt, um die Anwendung auf reale Betriebsszenarien vorzubereiten.
 
@@ -757,11 +930,9 @@ Das Frontend (`frontend/src/App.jsx`) reagiert auf Fehlermeldungen vom Backend d
       try {
         const response = await fetch(`${API_URL}/notes`);
         if (!response.ok) {
-          const errorData = await response
-            .json()
-            .catch(() => ({
-              error: "Failed to parse error response from server",
-            }));
+          const errorData = await response.json().catch(() => ({
+            error: "Failed to parse error response from server",
+          }));
           throw new Error(
             errorData.error || `HTTP error! status: ${response.status}`
           );
