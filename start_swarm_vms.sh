@@ -182,19 +182,29 @@ if [ "$SKIP_TABLE_CREATION" != "true" ]; then
     DB_USER="meinnotizblockuser"
     DB_NAME="notizblock_prod_db"
     
-    LOCAL_SQL_FILE_PATH="./backend/sql/initial_schema.sql" # Pfad zu deiner lokalen SQL-Datei
-    REMOTE_SQL_FILE_ON_NODE="/tmp/initial_schema.sql"    # Temporärer Pfad auf dem Worker-Node
-    SQL_FILE_IN_CONTAINER="/tmp/initial_schema.sql"      # Pfad der SQL-Datei im Container
+    LOCAL_SQL_FILE_PATH="./backend/sql/initial_schema.sql" 
+    REMOTE_SQL_FILE_ON_NODE="/tmp/initial_schema.sql"    
+    SQL_FILE_IN_CONTAINER="/tmp/initial_schema.sql"      
+
+    # Pfade für das neue execute_psql.sh Skript
+    LOCAL_EXEC_SCRIPT_PATH="./execute_psql.sh" # ANPASSEN, falls du es woanders speicherst
+    REMOTE_EXEC_SCRIPT_ON_NODE="/tmp/execute_psql.sh"
+    EXEC_SCRIPT_IN_CONTAINER="/tmp/execute_psql.sh"
 
     if [ ! -f "$LOCAL_SQL_FILE_PATH" ]; then
         echo "FEHLER: Lokale SQL-Datei '$LOCAL_SQL_FILE_PATH' nicht gefunden."
-        SKIP_TABLE_CREATION="true" # Setze dies, um den Rest zu überspringen
+        SKIP_TABLE_CREATION="true" 
     fi
-fi # Beende das if für die Dateiprüfung hier, damit das nächste if greift
+    if [ ! -f "$LOCAL_EXEC_SCRIPT_PATH" ]; then
+        echo "FEHLER: Lokales psql-Ausführungsskript '$LOCAL_EXEC_SCRIPT_PATH' nicht gefunden."
+        SKIP_TABLE_CREATION="true"
+    fi
+fi
 
-if [ "$SKIP_TABLE_CREATION" != "true" ]; then # Führe nur aus, wenn Datei existiert und keine vorherigen Fehler
+if [ "$SKIP_TABLE_CREATION" != "true" ]; then 
     echo ">>> Warte maximal 2 Minuten darauf, dass der Dienst $DB_SERVICE_NAME auf $DB_NODE einen laufenden Container hat..."
     DB_CONTAINER_ID=""
+    # ... (Container-Suchschleife bleibt gleich) ...
     for i in {1..24}; do
         DB_CONTAINER_ID=$(multipass exec "$DB_NODE" -- sudo docker ps --filter "label=com.docker.swarm.service.name=${DB_SERVICE_NAME}" --format "{{.ID}}" | head -n 1)
         if [ -n "$DB_CONTAINER_ID" ]; then
@@ -211,63 +221,81 @@ if [ "$SKIP_TABLE_CREATION" != "true" ]; then # Führe nur aus, wenn Datei exist
         echo "FEHLER: Konnte nach 2 Minuten keinen laufenden Container für den Dienst $DB_SERVICE_NAME auf $DB_NODE finden."
         echo ">>> Überspringe Schema-Initialisierung."
     else
+        # Schritt 2a: SQL-Datei auf Node übertragen
         echo ">>> Übertrage SQL-Datei '$LOCAL_SQL_FILE_PATH' auf '$DB_NODE:$REMOTE_SQL_FILE_ON_NODE'..."
         if multipass transfer "$LOCAL_SQL_FILE_PATH" "$DB_NODE:$REMOTE_SQL_FILE_ON_NODE"; then
             echo ">>> SQL-Datei erfolgreich auf $DB_NODE übertragen."
-            echo ">>> Versuche, SQL-Datei von '$DB_NODE:$REMOTE_SQL_FILE_ON_NODE' in den Container '$DB_CONTAINER_ID' als '$SQL_FILE_IN_CONTAINER' zu streamen..."
-            
-            # Robusterer Weg, um die Datei in den Container zu bekommen:
-            # multipass exec $DB_NODE -- bash -c "cat '$REMOTE_SQL_FILE_ON_NODE' | sudo docker exec -i '$DB_CONTAINER_ID' sh -c 'cat > \"$SQL_FILE_IN_CONTAINER\"'"
-            # Wir müssen die inneren Anführungszeichen für sh -c 'cat > "$SQL_FILE_IN_CONTAINER"' escapen.
-            
-            # Der Befehl, der auf DB_NODE ausgeführt werden soll:
-            # cat '/tmp/initial_schema.sql' | sudo docker exec -i 'container_id' sh -c 'cat > "/tmp/initial_schema.sql"'
-            STREAM_COMMAND="cat '$REMOTE_SQL_FILE_ON_NODE' | sudo docker exec -i '$DB_CONTAINER_ID' sh -c 'cat > \"$SQL_FILE_IN_CONTAINER\"'"
-            echo "DEBUG: STREAM_COMMAND auf $DB_NODE wird sein: $STREAM_COMMAND"
 
-            if multipass exec "$DB_NODE" -- bash -c "$STREAM_COMMAND"; then
-                echo ">>> SQL-Datei erfolgreich in den Container $DB_CONTAINER_ID gestreamt."
-                
-                # --- DEBUG-SCHRITTE für die Datei im Container ---
-                echo ">>> DEBUG: Überprüfe Existenz von $SQL_FILE_IN_CONTAINER im Container $DB_CONTAINER_ID..."
-                if multipass exec "$DB_NODE" -- sudo docker exec "$DB_CONTAINER_ID" sh -c "ls -l '$SQL_FILE_IN_CONTAINER'"; then
-                    echo ">>> DEBUG: Inhalt von $SQL_FILE_IN_CONTAINER im Container:"
-                    multipass exec "$DB_NODE" -- sudo docker exec "$DB_CONTAINER_ID" sh -c "cat '$SQL_FILE_IN_CONTAINER'"
+            # Schritt 2b: execute_psql.sh Skript auf Node übertragen
+            echo ">>> Übertrage psql-Ausführungsskript '$LOCAL_EXEC_SCRIPT_PATH' auf '$DB_NODE:$REMOTE_EXEC_SCRIPT_ON_NODE'..."
+            if multipass transfer "$LOCAL_EXEC_SCRIPT_PATH" "$DB_NODE:$REMOTE_EXEC_SCRIPT_ON_NODE"; then
+                echo ">>> psql-Ausführungsskript erfolgreich auf $DB_NODE übertragen."
+
+                # Schritt 3a: SQL-Datei in Container streamen/kopieren
+                echo ">>> Versuche, SQL-Datei von '$DB_NODE:$REMOTE_SQL_FILE_ON_NODE' in den Container '$DB_CONTAINER_ID' als '$SQL_FILE_IN_CONTAINER' zu streamen..."
+                STREAM_COMMAND="cat '$REMOTE_SQL_FILE_ON_NODE' | sudo docker exec -i '$DB_CONTAINER_ID' sh -c 'cat > \"$SQL_FILE_IN_CONTAINER\"'"
+                echo "DEBUG: STREAM_COMMAND auf $DB_NODE wird sein: $STREAM_COMMAND"
+                if multipass exec "$DB_NODE" -- bash -c "$STREAM_COMMAND"; then
+                    echo ">>> SQL-Datei erfolgreich in den Container $DB_CONTAINER_ID gestreamt."
+
+                    # --- DEBUG-SCHRITTE für die SQL-Datei im Container (optional, aber gut für die Fehlersuche) ---
+                    echo ">>> DEBUG: Überprüfe Existenz von $SQL_FILE_IN_CONTAINER im Container $DB_CONTAINER_ID..."
+                    multipass exec "$DB_NODE" -- sudo docker exec "$DB_CONTAINER_ID" sh -c "ls -l '$SQL_FILE_IN_CONTAINER'" || echo "DEBUG: ls für SQL-Datei fehlgeschlagen"
+                    # --- ENDE DEBUG-SCHRITTE ---
+
+                    # Schritt 3b: execute_psql.sh Skript in Container kopieren
+                    # Verwende docker cp, das ist oft robuster für ganze Dateien als cat-Pipes
+                    # docker cp benötigt den Pfad auf dem Host (Node) und den Pfad im Container
+                    # Syntax: sudo docker cp /pfad/auf/node container_id:/pfad/im/container
+                    COPY_EXEC_SCRIPT_TO_CONTAINER_COMMAND="sudo docker cp '$REMOTE_EXEC_SCRIPT_ON_NODE' '$DB_CONTAINER_ID:$EXEC_SCRIPT_IN_CONTAINER'"
+                    echo "DEBUG: COPY_EXEC_SCRIPT_TO_CONTAINER_COMMAND auf $DB_NODE wird sein: $COPY_EXEC_SCRIPT_TO_CONTAINER_COMMAND"
+                    if multipass exec "$DB_NODE" -- bash -c "$COPY_EXEC_SCRIPT_TO_CONTAINER_COMMAND"; then
+                        echo ">>> psql-Ausführungsskript erfolgreich in den Container $DB_CONTAINER_ID kopiert."
+
+                        # Schritt 4: Skript im Container ausführbar machen
+                        CHMOD_EXEC_SCRIPT_COMMAND="sudo docker exec '$DB_CONTAINER_ID' chmod +x '$EXEC_SCRIPT_IN_CONTAINER'"
+                        echo "DEBUG: CHMOD_EXEC_SCRIPT_COMMAND auf $DB_NODE wird sein: $CHMOD_EXEC_SCRIPT_COMMAND"
+                        if multipass exec "$DB_NODE" -- bash -c "$CHMOD_EXEC_SCRIPT_COMMAND"; then
+                            echo ">>> psql-Ausführungsskript im Container ausführbar gemacht."
+
+                            # Schritt 5: Skript im Container ausführen
+                            echo ">>> Versuche Schema über '$EXEC_SCRIPT_IN_CONTAINER' im Container $DB_CONTAINER_ID zu erstellen..."
+                            # Die Argumente müssen für die Shell im Container korrekt gequotet sein, falls sie Leerzeichen etc. enthalten.
+                            # Hier sind sie einfach, aber gute Praxis:
+                            RUN_EXEC_SCRIPT_COMMAND="sudo docker exec '$DB_CONTAINER_ID' '$EXEC_SCRIPT_IN_CONTAINER' '$DB_USER' '$DB_NAME' '$SQL_FILE_IN_CONTAINER'"
+                            echo "DEBUG: RUN_EXEC_SCRIPT_COMMAND auf $DB_NODE wird sein: $RUN_EXEC_SCRIPT_COMMAND"
+                            if multipass exec "$DB_NODE" -- bash -c "$RUN_EXEC_SCRIPT_COMMAND"; then
+                                echo ">>> Schema aus '$SQL_FILE_IN_CONTAINER' erfolgreich initialisiert via externem Skript."
+                            else
+                                LAST_EXIT_CODE=$?
+                                echo "FEHLER: Schema-Initialisierung via externem Skript '$EXEC_SCRIPT_IN_CONTAINER' fehlgeschlagen."
+                                echo "DEBUG: Exit-Code des externen Skripts (multipass/docker exec): $LAST_EXIT_CODE"
+                            fi
+                        else
+                            echo "FEHLER: Konnte psql-Ausführungsskript im Container nicht ausführbar machen."
+                        fi
+                        # Schritt 6b: Temporäres execute_psql.sh Skript im Container löschen
+                        echo ">>> Entferne temporäres psql-Ausführungsskript '$EXEC_SCRIPT_IN_CONTAINER' aus dem Container..."
+                        multipass exec "$DB_NODE" -- sudo docker exec "$DB_CONTAINER_ID" rm -f "$EXEC_SCRIPT_IN_CONTAINER" || echo "WARNUNG: Konnte psql-Ausführungsskript im Container nicht entfernen."
+                    else
+                        echo "FEHLER: Konnte psql-Ausführungsskript nicht von $DB_NODE in den Container $DB_CONTAINER_ID kopieren."
+                    fi
+                    # Schritt 6a: Temporäre SQL-Datei im Container löschen
+                    echo ">>> Entferne temporäre SQL-Datei '$SQL_FILE_IN_CONTAINER' aus dem Container..."
+                    multipass exec "$DB_NODE" -- sudo docker exec "$DB_CONTAINER_ID" rm -f "$SQL_FILE_IN_CONTAINER" || echo "WARNUNG: Konnte SQL-Datei im Container nicht entfernen."
                 else
-                    echo "DEBUG: Datei $SQL_FILE_IN_CONTAINER im Container NICHT gefunden via ls."
-                fi # <<<<<<< HIER FEHLTE WAHRSCHEINLICH EIN 'fi' ODER DIE STRUKTUR WAR ANDERS GEDACHT
-                # --- ENDE DEBUG-SCHRITTE ---
-
-                echo ">>> Versuche Schema aus '$SQL_FILE_IN_CONTAINER' im Container $DB_CONTAINER_ID zu erstellen (Benutzer: $DB_USER, DB: $DB_NAME)..."
-
-                PSQL_PATH_IN_CONTAINER="/usr/bin/psql"
-                SCRIPT_TO_RUN_IN_SH="'$PSQL_PATH_IN_CONTAINER' -U \"\$1\" -d \"\$2\" -f \"\$3\""
-                echo "DEBUG: SCRIPT_TO_RUN_IN_SH wird sein: $SCRIPT_TO_RUN_IN_SH"
-                echo "DEBUG: Argument 1 (\$DB_USER): $DB_USER"
-                echo "DEBUG: Argument 2 (\$DB_NAME): $DB_NAME"
-                echo "DEBUG: Argument 3 (\$SQL_FILE_IN_CONTAINER): $SQL_FILE_IN_CONTAINER"
-
-                if multipass exec "$DB_NODE" -- \
-                    sudo docker exec "$DB_CONTAINER_ID" \
-                    sh -c "$SCRIPT_TO_RUN_IN_SH" \
-                    "psql-runner" "$DB_USER" "$DB_NAME" "$SQL_FILE_IN_CONTAINER"; then
-                    echo ">>> Schema aus '$SQL_FILE_IN_CONTAINER' erfolgreich initialisiert."
-                else
-                    LAST_EXIT_CODE=$?
-                    echo "FEHLER: Konnte Schema aus '$SQL_FILE_IN_CONTAINER' nicht initialisieren."
-                    echo "Mögliche Ursachen: Fehler in der SQL-Datei, falscher DB_USER/DB_NAME, DB-Dienst nicht bereit, psql-Problem, Datei nicht im Container gefunden, Berechtigungsproblem."
-                    echo "DEBUG: Exit-Code des multipass/docker exec-Befehls: $LAST_EXIT_CODE"
+                    echo "FEHLER: Konnte SQL-Datei nicht von $DB_NODE in den Container $DB_CONTAINER_ID streamen."
                 fi
-
-                echo ">>> Entferne temporäre SQL-Datei '$SQL_FILE_IN_CONTAINER' aus dem Container..."
-                multipass exec "$DB_NODE" -- sudo docker exec "$DB_CONTAINER_ID" rm -f "$SQL_FILE_IN_CONTAINER" || echo "WARNUNG: Konnte SQL-Datei im Container nicht entfernen."
+                # Schritt 6c: Temporäres execute_psql.sh Skript auf dem Node löschen
+                echo ">>> Entferne temporäres psql-Ausführungsskript '$REMOTE_EXEC_SCRIPT_ON_NODE' von $DB_NODE..."
+                multipass exec "$DB_NODE" -- sudo rm -f "$REMOTE_EXEC_SCRIPT_ON_NODE" || echo "WARNUNG: Konnte psql-Ausführungsskript auf $DB_NODE nicht entfernen."
             else
-                echo "FEHLER: Konnte SQL-Datei nicht von $DB_NODE in den Container $DB_CONTAINER_ID streamen."
-            fi # Ende von if multipass exec "$DB_NODE" -- bash -c "$STREAM_COMMAND"
-            
+                echo "FEHLER: 'multipass transfer' des psql-Ausführungsskripts '$LOCAL_EXEC_SCRIPT_PATH' auf den Node '$DB_NODE' ist fehlgeschlagen."
+            fi
+            # Schritt 6d: Temporäre SQL-Datei auf dem Node löschen
             echo ">>> Entferne temporäre SQL-Datei '$REMOTE_SQL_FILE_ON_NODE' von $DB_NODE..."
             multipass exec "$DB_NODE" -- sudo rm -f "$REMOTE_SQL_FILE_ON_NODE" || echo "WARNUNG: Konnte SQL-Datei auf $DB_NODE nicht entfernen."
-        else # Dieses else gehört zum 'if multipass transfer ...'
+        else 
             echo "FEHLER: 'multipass transfer' der SQL-Datei '$LOCAL_SQL_FILE_PATH' auf den Node '$DB_NODE' ist fehlgeschlagen."
         fi
     fi
