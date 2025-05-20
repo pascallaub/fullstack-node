@@ -336,6 +336,63 @@ docker service logs --tail 100 -f myapp_backend
 
 Die Logs werden von allen Tasks des jeweiligen Dienstes aggregiert und auf dem Manager angezeigt.
 
+### Automatisierte Einrichtung und Bereinigung des Swarm-Clusters mit Skripten
+
+Für eine vereinfachte Handhabung des Docker Swarm Setups wurden Skripte erstellt, die den Prozess des Erstellens, Konfigurierens und Bereinigens der Multipass VMs und des Swarm-Clusters automatisieren.
+
+**Voraussetzungen für die Skripte:**
+
+- Multipass muss installiert sein.
+- Die Skripte müssen im Wurzelverzeichnis des Projekts (`node-container/`) liegen und ausführbar sein (z.B. via `chmod +x start_swarm_vms.sh`).
+- Die benötigten Docker-Images für die Anwendung müssen gebaut und in einer Registry verfügbar sein (z.B. Docker Hub), auf die die Swarm-Nodes zugreifen können.
+- Die `stack.yml`-Datei und die `execute_psql.sh` sowie die `initial_schema.sql` müssen in den im Start-Skript definierten Pfaden vorhanden sein.
+
+**1. Swarm-Cluster und Anwendung starten (`start_swarm_vms.sh`):**
+
+Dieses Skript automatisiert die folgenden Schritte:
+
+- Erstellt und startet die benötigten Multipass VMs (manager, worker1, worker2, worker3).
+- Installiert Docker auf allen VMs.
+- Initialisiert den Docker Swarm auf dem Manager-Node.
+- Lässt die Worker-Nodes dem Swarm beitreten.
+- Labelt die Nodes für die korrekte Dienstplatzierung.
+- Überträgt die `stack.yml`-Datei auf den Manager-Node.
+- Deployt den Anwendungsstack (`myapp`) auf dem Swarm.
+- Überträgt die SQL-Schema-Datei und das Ausführungsskript auf den Datenbank-Node und in den Datenbank-Container.
+- Initialisiert das Datenbankschema.
+- Zeigt abschließend den Status der VMs, Swarm-Nodes und des Stacks an.
+
+**Ausführung:**
+Navigiere in deinem Terminal zum Wurzelverzeichnis des Projekts (`node-container/`) und führe aus:
+
+```bash
+./start_swarm_vms.sh
+```
+
+Stelle sicher, dass das Skript Ausführungsrechte hat (`chmod +x start_swarm_vms.sh`). Unter Windows mit Git Bash kann es auch mit `bash start_swarm_vms.sh` ausgeführt werden.
+
+_Ein erfolgreicher Durchlauf des Start-Skripts zeigt die initialisierten VMs, den laufenden Swarm und den deployten Stack:_
+![Erfolgreicher Start des Swarm Clusters und der Anwendung](./frontend/public/startSwarm.png)
+
+**2. Swarm-Cluster stoppen und VMs bereinigen (z.B. `stop_swarm_vms.sh`):**
+
+Dieses Skript (passe den Namen an, falls dein Skript anders heißt) ist dafür vorgesehen, die erstellte Umgebung wieder sauber zu entfernen. Typische Aktionen sind:
+
+- Entfernen des Anwendungsstacks vom Swarm (`docker stack rm myapp`).
+- Entfernen der Worker-Nodes aus dem Swarm und Verlassen des Swarms auf dem Manager.
+- Stoppen der Multipass VMs.
+- Löschen der Multipass VMs.
+- Optional: Bereinigen von Multipass (`multipass purge`).
+
+**Ausführung (Beispiel):**
+Navigiere in deinem Terminal zum Wurzelverzeichnis des Projekts (`node-container/`) und führe aus:
+
+```bash
+./stop_swarm_vms.sh
+```
+
+(Passe den Befehl und Skriptnamen entsprechend an.)
+
 ### Finaler Zustand des Stacks & Verifizierung der Robustheit
 
 Der Anwendungsstack ist nun eine vollständige Full-Stack-Anwendung mit Frontend, Backend und einer persistenten Datenbank, die alle über Docker Compose orchestriert werden. Besonderer Fokus wurde auf Stabilität und Robustheit gelegt, um die Anwendung auf reale Betriebsszenarien vorzubereiten.
