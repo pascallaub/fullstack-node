@@ -333,8 +333,3 @@ Suche nach dem `frontend-service` und seiner `EXTERNAL-IP`. Wenn `EXTERNAL-IP` a
 - **Service nicht erreichbar:**
   Überprüfe die Selektoren im Service und die Labels der Pods.
   Überprüfe die Endpunkte des Services: `kubectl get endpoints <service-name> -n myapp`.
-
-```
-
-Du kannst diese `README.md` als Grundlage verwenden und bei Bedarf weitere Details oder spezifische Anweisungen für deine Umgebung hinzufügen.
-```
