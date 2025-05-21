@@ -1,0 +1,13 @@
+{
+  "notes": [
+    {
+      "id": 1,
+      "text": "asdf"
+    },
+    {
+      "id": 2,
+      "text": "wurstwasser"
+    }
+  ],
+  "nextId": 3
+}
