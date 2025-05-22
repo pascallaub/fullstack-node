@@ -21,15 +21,6 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - |
-              # Das explizite Leeren ist bei persistentem Speicher normalerweise nicht mehr nötig,
-              # da initdb nur ausgeführt wird, wenn das Verzeichnis wirklich leer ist (beim allerersten Mal).
-              # Wenn du es beibehältst, werden bei jedem Pod-Neustart die Daten gelöscht, was den Zweck von PV/PVC zunichte macht.
-              # Daher sollte dieser Block entfernt oder angepasst werden, wenn Persistenz gewünscht ist.
-              # Für den ersten Start mit einem leeren PV ist es okay, aber danach nicht mehr.
-              # Besser: Lasse das Standard-Postgres-Entrypoint-Skript entscheiden, ob initdb nötig ist.
-              # echo "INFO: Ensuring /var/lib/postgresql/data is empty before PostgreSQL start..."
-              # rm -rf /var/lib/postgresql/data/*
-              # rm -rf /var/lib/postgresql/data/.* 2>/dev/null || true
               echo "INFO: Starting original PostgreSQL entrypoint..."
               exec /usr/local/bin/docker-entrypoint.sh postgres
           ports:
@@ -44,12 +35,6 @@ spec:
                   key: POSTGRES_PASSWORD
             - name: POSTGRES_DB
               value: "notizblock_prod_db"
-            # PGDATA ist wichtig, um sicherzustellen, dass Postgres das gemountete Volume verwendet,
-            # obwohl der Standardpfad /var/lib/postgresql/data bereits korrekt ist.
-            # Es schadet aber nicht, es explizit zu setzen, wenn man den Mount-Pfad ändert.
-            # In diesem Fall ist es nicht zwingend nötig, da der Mount-Pfad dem Standard entspricht.
-            # - name: PGDATA
-            #   value: /var/lib/postgresql/data/pgdata # Beispiel, falls Unterverzeichnis gewünscht
           volumeMounts:
             - name: db-persistent-storage # Name des Volumes, das wir unten definieren
               mountPath: /var/lib/postgresql/data # Standard-Datenverzeichnis von PostgreSQL
@@ -95,9 +80,6 @@ spec:
             timeoutSeconds: 2
             failureThreshold: 3
       volumes:
-        # Entferne das emptyDir Volume für db-storage
-        # - name: db-storage
-        #   emptyDir: {}
         - name: db-persistent-storage # Definiere das Volume basierend auf dem PVC
           persistentVolumeClaim:
             claimName: db-pvc # Muss mit dem Namen deines PVC übereinstimmen
