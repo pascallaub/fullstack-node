@@ -8,6 +8,7 @@ Dieses Verzeichnis enthält die Kubernetes-Manifeste für das Deployment der Min
 - `kubectl` CLI konfiguriert für den Zugriff auf deinen Cluster.
 - Die Docker-Images für Frontend (`mephisto1339/frontend-image:latest`) und Backend (`mephisto1339/backend-image:latest`) müssen in einer Registry verfügbar sein, auf die dein Cluster zugreifen kann (oder lokal im Cluster, falls z.B. Docker Desktop verwendet wird).
 - Ein Ingress Controller (wie Nginx Ingress Controller) muss im Cluster installiert sein, wenn Ingress verwendet werden soll.
+- Optional: Für das Monitoring ein installierter Kubernetes Metrics Server und ein Monitoring-Stack wie `kube-prometheus-stack`.
 
 ## Verzeichnisstruktur
 
@@ -127,7 +128,7 @@ Es wird empfohlen, die Ressourcen in der folgenden Reihenfolge anzuwenden, um Ab
     kubectl apply -f k8s/database/secret.yaml -n myapp
     kubectl apply -f k8s/database/configmap.yaml -n myapp
     # Optional, aber empfohlen für Persistenz:
-    # kubectl apply -f k8s/database/pvc.yaml -n myapp
+    kubectl apply -f k8s/database/pvc.yaml -n myapp
     kubectl apply -f k8s/database/deployment.yaml -n myapp # Stelle sicher, dass dies das PVC verwendet, falls erstellt
     kubectl apply -f k8s/database/service.yaml -n myapp
     ```
@@ -196,6 +197,57 @@ kubectl get services -n myapp
 
 Suche nach dem `frontend-service` und seiner `EXTERNAL-IP`. Wenn `EXTERNAL-IP` auf `<pending>` steht, warte einige Minuten. Bei lokalen Clustern wie Minikube verwende `minikube service frontend-service -n myapp --url`. Für Docker Desktop ist der Dienst oft unter `localhost:<PORT>` erreichbar, wobei `<PORT>` der Port ist, der in der `kubectl get services` Ausgabe für den `frontend-service` angezeigt wird.
 
+## Kubernetes Monitoring (Metrics Server, Prometheus & Grafana)
+
+Wenn ein Monitoring-Stack im Kubernetes-Cluster installiert ist (z.B. Kubernetes Metrics Server und der `kube-prometheus-stack` im Namespace `monitoring`), kannst du wie folgt auf die Metriken und Dashboards zugreifen:
+
+### 1. Kubernetes Metrics Server
+
+Stellt grundlegende Ressourcenmetriken (CPU, Speicher) für Pods und Nodes bereit. Diese werden von `kubectl top` verwendet.
+
+- **Überprüfung (nachdem der Metrics Server installiert und bereit ist):**
+  ```bash
+  kubectl top nodes
+  kubectl top pods -n myapp # Für die Pods dieser Anwendung
+  kubectl top pods --all-namespaces # Für alle Pods in allen Namespaces
+  ```
+
+### 2. Prometheus Dashboard
+
+Prometheus sammelt detaillierte Metriken vom Cluster und den Anwendungen.
+
+- **Port-Forward zum Prometheus-Service:**
+  (Der Service-Name kann je nach Installation variieren, `prometheus-kube-prometheus-prometheus` ist üblich für den `kube-prometheus-stack`)
+  ```bash
+  kubectl port-forward -n monitoring svc/prometheus-kube-prometheus-prometheus 9090:9090
+  ```
+- **Zugriff:**
+  Öffne `http://localhost:9090` in deinem Browser.
+  Hier kannst du Metriken abfragen (PromQL) und den Status der Scrape-Ziele einsehen.
+
+### 3. Grafana Dashboard
+
+Grafana visualisiert die von Prometheus gesammelten Metriken in anpassbaren Dashboards.
+
+- **Admin-Passwort für Grafana abrufen:**
+  (Der Secret-Name kann je nach Installation variieren, `prometheus-grafana` ist üblich für den `kube-prometheus-stack`. Der Benutzername ist `admin`.)
+  ```bash
+  kubectl get secret -n monitoring prometheus-grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
+  ```
+- **Port-Forward zum Grafana-Service:**
+  (Der Service-Name kann je nach Installation variieren, `prometheus-grafana` ist üblich)
+  ```bash
+  kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80
+  ```
+  (Der Grafana-Service im Chart lauscht oft intern auf Port 80, wir leiten ihn auf unseren lokalen Port 3000 weiter).
+- **Zugriff:**
+  Öffne `http://localhost:3000` in deinem Browser.
+  Melde dich mit dem Benutzernamen `admin` und dem zuvor abgerufenen Passwort an.
+  Der `kube-prometheus-stack` installiert in der Regel bereits einige nützliche Dashboards zur Überwachung des Kubernetes-Clusters. Diese findest du unter "Dashboards" oder "Browse".
+
+**Hinweis zum Monitoring-Stack:**
+Die Befehle setzen voraus, dass der Monitoring-Stack im Namespace `monitoring` installiert wurde und die Service-Namen den gängigen Konventionen des `kube-prometheus-stack` Helm-Charts entsprechen. Passe die Namespace- und Service-Namen bei Bedarf an deine spezifische Installation an. Die Installation des Monitoring-Stacks selbst ist nicht Teil dieser Anwendungs-YAMLs, sondern erfolgt separat (z.B. Metrics Server über `kubectl apply`, Prometheus/Grafana über Helm).
+
 ## Wichtige Hinweise
 
 - **Datenpersistenz:** Die Verwendung eines `PersistentVolumeClaim` (PVC) für die Datenbank wird dringend empfohlen, um Datenverlust bei Pod-Neustarts zu vermeiden. Ohne PVC (mit `emptyDir`) gehen alle Datenbankinhalte verloren.
@@ -219,3 +271,11 @@ Suche nach dem `frontend-service` und seiner `EXTERNAL-IP`. Wenn `EXTERNAL-IP` a
 - **Ingress-Probleme:**
   Überprüfe die Ingress-Konfiguration: `kubectl describe ingress myapp-ingress -n myapp`.
   Überprüfe die Logs des Ingress Controllers: `kubectl logs -l <label-des-ingress-controller-pods> -n <namespace-des-ingress-controllers>`.
+- **Metrics Server Probleme (`kubectl top nodes` schlägt fehl):**
+  Überprüfe den Status und die Logs des `metrics-server` Pods im `kube-system` Namespace. Für lokale Setups wie Docker Desktop muss oft das `metrics-server` Deployment mit dem Argument `--kubelet-insecure-tls` gepatcht werden.
+  ```bash
+  kubectl get pods -n kube-system | grep metrics-server
+  kubectl logs -n kube-system <metrics-server-pod-name>
+  # Patch-Befehl (falls nötig):
+  # kubectl patch deployment metrics-server -n kube-system --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--kubelet-insecure-tls"}]'
+  ```
