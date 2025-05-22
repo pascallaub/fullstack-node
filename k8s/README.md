@@ -10,6 +10,85 @@ Dieses Verzeichnis enthält die Kubernetes-Manifeste für das Deployment der Min
 - Ein Ingress Controller (wie Nginx Ingress Controller) muss im Cluster installiert sein, wenn Ingress verwendet werden soll.
 - Optional: Für das Monitoring ein installierter Kubernetes Metrics Server und ein Monitoring-Stack wie `kube-prometheus-stack`.
 
+### Installation des Nginx Ingress Controllers (mit Helm)
+
+Wenn du die `ingress.yaml` verwenden möchtest, um deine Anwendung extern zugänglich zu machen, benötigst du einen Ingress Controller in deinem Cluster. Hier ist eine Anleitung zur Installation des Nginx Ingress Controllers mit Helm:
+
+1.  **Helm installieren (falls noch nicht geschehen):**
+    Folge der offiziellen Anleitung unter [helm.sh/docs/intro/install/](https://helm.sh/docs/intro/install/)
+
+2.  **Nginx Ingress Controller Helm Repository hinzufügen:**
+
+    ```bash
+    helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+    helm repo update
+    ```
+
+3.  **Ingress Controller installieren:**
+    Du kannst den Ingress Controller in einem eigenen Namespace (z.B. `ingress-nginx`) oder im `kube-system` Namespace installieren.
+
+    - **Option A: Installation in einem neuen Namespace `ingress-nginx` (empfohlen):**
+
+      ```bash
+      kubectl create namespace ingress-nginx
+      helm install ingress-nginx ingress-nginx/ingress-nginx \
+        --namespace ingress-nginx \
+        --set controller.replicaCount=1 \
+        --set controller.nodeSelector."kubernetes\.io/os"=linux \
+        --set controller.admissionWebhooks.patch.nodeSelector."kubernetes\.io/os"=linux \
+        --set defaultBackend.nodeSelector."kubernetes\.io/os"=linux
+      ```
+
+      _Hinweis für Docker Desktop, Minikube oder andere lokale Cluster:_ Manchmal sind die Standard-Replikatanzahlen zu hoch oder es gibt Probleme mit der Ressourcenanforderung. `controller.replicaCount=1` ist oft ausreichend für lokale Setups. Die `nodeSelector` sind wichtig, um sicherzustellen, dass die Pods auf Linux-Nodes laufen, was bei Windows mit WSL2 der Fall ist.
+
+    - **Option B: Installation für Docker Desktop (vereinfachte Konfiguration):**
+      Für Docker Desktop kann es hilfreich sein, spezifische Werte zu setzen, die besser mit der lokalen Umgebung harmonieren, insbesondere wenn der LoadBalancer-Service nicht sofort eine externe IP bekommt.
+      ```bash
+      kubectl create namespace ingress-nginx # Falls noch nicht vorhanden
+      helm install ingress-nginx ingress-nginx/ingress-nginx \
+        --namespace ingress-nginx \
+        --set controller.replicaCount=1 \
+        --set controller.service.type=NodePort \
+        --set controller.service.nodePorts.http=32080 \
+        --set controller.service.nodePorts.https=32443 \
+        --set controller.admissionWebhooks.patch.nodeSelector."kubernetes\.io/os"=linux \
+        --set defaultBackend.nodeSelector."kubernetes\.io/os"=linux \
+        --set controller.nodeSelector."kubernetes\.io/os"=linux
+      ```
+      Mit dieser Konfiguration wird der Ingress Controller über NodePorts (`32080` für HTTP, `32443` für HTTPS) auf `localhost` erreichbar. Du kannst dann `localhost:32080` als externe IP für deine Host-Einträge verwenden.
+
+4.  **Installation überprüfen:**
+    Warte einige Minuten, bis alle Pods des Ingress Controllers laufen:
+
+    ```bash
+    kubectl get pods -n ingress-nginx -w
+    ```
+
+    Überprüfe den Service des Ingress Controllers. Bei Cloud-Providern sollte er eine `EXTERNAL-IP` vom Typ `LoadBalancer` erhalten. Bei lokalen Setups (wie Docker Desktop mit der NodePort-Konfiguration oben) greifst du über `localhost:<NodePort>` zu.
+
+    ```bash
+    kubectl get services -n ingress-nginx
+    ```
+
+    Wenn du die NodePort-Variante für Docker Desktop gewählt hast, sollte der Service `ingress-nginx-controller` die Ports `80:32080/TCP` und `443:32443/TCP` anzeigen.
+
+5.  **IngressClass in `ingress.yaml` sicherstellen:**
+    Deine `k8s/ingress.yaml` sollte die korrekte `ingressClassName` verwenden. Für den Nginx Ingress Controller ist dies üblicherweise `nginx`.
+    ```yaml
+    # k8s/ingress.yaml
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: myapp-ingress
+      # Ggf. Annotationen hier
+    spec:
+      ingressClassName: nginx # Wichtig!
+      rules:
+      # ... deine Regeln
+    ```
+
+Nachdem der Ingress Controller läuft, kannst du mit der Deployment-Reihenfolge deiner Anwendung fortfahren und die `ingress.yaml` anwenden. Der Zugriff erfolgt dann wie im Abschnitt "Zugriff auf die Anwendung" beschrieben, wobei die externe IP des Ingress Controllers (oder `localhost` bei Docker Desktop NodePort-Setup) verwendet wird.
+
 ## Verzeichnisstruktur
 
 ```
