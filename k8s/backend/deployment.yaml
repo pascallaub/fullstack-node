@@ -16,6 +16,7 @@ spec:
       containers:
         - name: backend
           image: mephisto1339/backend-image:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 3000
           env:
