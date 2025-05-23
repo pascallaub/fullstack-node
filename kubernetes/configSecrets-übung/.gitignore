@@ -1,0 +1,11 @@
+# Node.js
+backend/node_modules/
+npm-debug.log
+yarn-error.log
+
+# Kubernetes secrets
+kubernetes/app-secret.yaml
+
+# IDE / OS specific
+.DS_Store
+.vscode/

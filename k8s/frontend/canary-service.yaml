@@ -1,12 +1,12 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: frontend
+  name: frontend-canary # Eindeutiger Name für den Canary-Service
   namespace: myapp
 spec:
   selector:
     app: frontend
-    version: stable
+    version: canary # Selektiert die Canary-Pods
   ports:
   - port: 80
     targetPort: 80

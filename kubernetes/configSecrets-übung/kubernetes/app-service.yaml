@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-config-app-service
+  labels:
+    app: my-config-app
+spec:
+  type: NodePort # Or ClusterIP if you prefer internal access only
+  selector:
+    app: my-config-app # Must match the labels of the Pods in the Deployment
+  ports:
+    - protocol: TCP
+      port: 80 # Port on the Service
+      targetPort: 3000 # Port on the Pods (containerPort)
+      # nodePort: 30080 # Optional: specify NodePort, otherwise one is auto-assigned (30000-32767)

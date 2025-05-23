@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-canary
+  namespace: myapp
+spec:
+  replicas: 1 # Starten Sie mit einer kleinen Anzahl von Replicas für den Canary
+  selector:
+    matchLabels:
+      app: frontend
+      version: canary # Eindeutiges Label für Canary-Pods
+  template:
+    metadata:
+      labels:
+        app: frontend
+        version: canary # Eindeutiges Label für Canary-Pods
+    spec:
+      containers:
+      - name: frontend
+        image: mephisto1339/frontend-image:extended-version # Die neue, erweiterte Version Ihres Frontend-Images
+        ports:
+        - containerPort: 80

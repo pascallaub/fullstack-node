@@ -1,25 +1,31 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: myapp-ingress
+  name: myapp-combined-ingress
   namespace: myapp
+  annotations:
+    # Annotationen für den / Pfad (Canary)
+    nginx.ingress.kubernetes.io/canary: "true"
+    nginx.ingress.kubernetes.io/canary-service: "frontend-canary" # Gilt für den Service 'frontend'
+    nginx.ingress.kubernetes.io/canary-weight: "10" # Gilt für den Service 'frontend'
+    # Ggf. weitere Annotationen, falls nötig
 spec:
   ingressClassName: nginx
   rules:
   - host: myapp.local
     http:
       paths:
-      - path: /api
-        pathType: Prefix
-        backend:
-          service:
-            name: backend
-            port:
-              number: 3000
       - path: /
         pathType: Prefix
         backend:
           service:
-            name: frontend
+            name: frontend # Haupt-Service für /
             port:
               number: 80
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: backend # Service für /api
+            port:
+              number: 3000

@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS notes (
     id SERIAL PRIMARY KEY,
     text_content TEXT NOT NULL,
+    is_done BOOLEAN DEFAULT FALSE, -- Hinzugefügt für Erledigt-Status
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

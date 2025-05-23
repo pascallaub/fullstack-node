@@ -14,11 +14,11 @@ function EditNoteForm({ note, onSave, onCancel }) {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!editText.trim()) {
-      // Optional: Validierung, dass der Text nicht leer ist
       alert('Notiztext darf nicht leer sein.');
       return;
     }
-    onSave(note.id, editText);
+    // onSave erwartet jetzt die ID und den Text
+    onSave(note.id, editText); // Hier wird nur der Text übergeben
   };
 
   if (!note) {

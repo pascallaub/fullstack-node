@@ -95,19 +95,55 @@ app.get("/health", async (req, res) => {
 });
 
 // --- API Endpoints ---
-// GET all notes
+// GET all notes (with filtering, searching, and sorting)
 app.get("/api/notes", async (req, res, next) => {
-  // <--- Pfad geändert
-  logger.info("GET /api/notes - Fetching all notes"); // Log-Nachricht auch anpassen
+  logger.info("GET /api/notes - Fetching notes with query params:", req.query);
   try {
-    const result = await pool.query(
-      "SELECT id, text_content AS text, created_at, updated_at FROM notes ORDER BY created_at DESC"
-    );
+    let query = "SELECT id, text_content AS text, is_done, created_at, updated_at FROM notes";
+    const queryParams = [];
+    let paramIndex = 1;
+    const whereClauses = [];
+
+    // Search
+    if (req.query.search) {
+      whereClauses.push(`text_content ILIKE $${paramIndex++}`);
+      queryParams.push(`%${req.query.search}%`);
+    }
+
+    // Filter by status
+    if (req.query.status) {
+      if (req.query.status === "done") {
+        whereClauses.push(`is_done = TRUE`);
+      } else if (req.query.status === "open") {
+        whereClauses.push(`is_done = FALSE`);
+      }
+      // 'all' needs no specific clause for is_done unless combined with other filters
+    }
+
+    if (whereClauses.length > 0) {
+      query += " WHERE " + whereClauses.join(" AND ");
+    }
+
+    // Sorting
+    const sortBy = req.query.sortBy || "created_at";
+    const sortOrder = req.query.sortOrder === "asc" ? "ASC" : "DESC"; // Default to DESC
+
+    // Whitelist sortBy columns to prevent SQL injection
+    const validSortColumns = ["created_at", "updated_at", "text_content", "is_done"];
+    if (validSortColumns.includes(sortBy)) {
+      query += ` ORDER BY ${sortBy} ${sortOrder}`;
+    } else {
+      query += ` ORDER BY created_at ${sortOrder}`; // Default sort
+    }
+    
+    logger.info(`Executing query: ${query} with params: ${JSON.stringify(queryParams)}`);
+    const result = await pool.query(query, queryParams);
     res.json(result.rows);
   } catch (err) {
     logger.error("Error fetching notes from DB", {
       error: err.message,
       stack: err.stack,
+      query: req.query
     });
     next(err);
   }
@@ -115,15 +151,15 @@ app.get("/api/notes", async (req, res, next) => {
 
 // POST a new note
 app.post("/api/notes", async (req, res, next) => {
-  // <--- Pfad geändert
   const { text } = req.body;
   if (!text) {
-    logger.warn("POST /api/notes - Bad Request: Note text is required"); // Log-Nachricht auch anpassen
+    logger.warn("POST /api/notes - Bad Request: Note text is required");
     return res.status(400).json({ error: "Note text is required" });
   }
   try {
+    // is_done defaults to FALSE in the DB
     const result = await pool.query(
-      "INSERT INTO notes (text_content) VALUES ($1) RETURNING id, text_content AS text, created_at, updated_at",
+      "INSERT INTO notes (text_content) VALUES ($1) RETURNING id, text_content AS text, is_done, created_at, updated_at",
       [text]
     );
     const newNote = result.rows[0];
@@ -140,27 +176,39 @@ app.post("/api/notes", async (req, res, next) => {
 
 // PUT (update) an existing note by id
 app.put("/api/notes/:id", async (req, res, next) => {
-  // <--- Pfad geändert
   const idToUpdate = parseInt(req.params.id, 10);
-  const { text } = req.body;
+  const { text, is_done } = req.body;
 
   if (isNaN(idToUpdate)) {
-    logger.warn(`PUT /api/notes/${req.params.id} - Invalid ID format`); // Log-Nachricht auch anpassen
+    logger.warn(`PUT /api/notes/${req.params.id} - Invalid ID format`);
     return res.status(400).json({ error: "Invalid ID format" });
   }
 
-  if (!text) {
-    logger.warn(
-      `PUT /api/notes/${idToUpdate} - Bad Request: Note text is required for update` // Log-Nachricht auch anpassen
-    );
-    return res.status(400).json({ error: "Note text is required" });
+  if (typeof text === 'undefined' && typeof is_done === 'undefined') {
+    logger.warn(`PUT /api/notes/${idToUpdate} - Bad Request: text or is_done is required for update`);
+    return res.status(400).json({ error: "Either text or is_done must be provided for update" });
   }
-
+  
   try {
-    const result = await pool.query(
-      "UPDATE notes SET text_content = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id, text_content AS text, created_at, updated_at",
-      [text, idToUpdate]
-    );
+    let updateQuery = "UPDATE notes SET ";
+    const updateFields = [];
+    const queryParams = [];
+    let paramIndex = 1;
+
+    if (typeof text !== 'undefined') {
+      updateFields.push(`text_content = $${paramIndex++}`);
+      queryParams.push(text);
+    }
+    if (typeof is_done === 'boolean') {
+      updateFields.push(`is_done = $${paramIndex++}`);
+      queryParams.push(is_done);
+    }
+    
+    updateFields.push(`updated_at = CURRENT_TIMESTAMP`);
+    updateQuery += updateFields.join(", ") + ` WHERE id = $${paramIndex++} RETURNING id, text_content AS text, is_done, created_at, updated_at`;
+    queryParams.push(idToUpdate);
+
+    const result = await pool.query(updateQuery, queryParams);
 
     if (result.rowCount > 0) {
       const updatedNote = result.rows[0];
@@ -183,10 +231,9 @@ app.put("/api/notes/:id", async (req, res, next) => {
 
 // DELETE a note by id
 app.delete("/api/notes/:id", async (req, res, next) => {
-  // <--- Pfad geändert
   const idToDelete = parseInt(req.params.id, 10);
   if (isNaN(idToDelete)) {
-    logger.warn(`DELETE /api/notes/${req.params.id} - Invalid ID format`); // Log-Nachricht auch anpassen
+    logger.warn(`DELETE /api/notes/${req.params.id} - Invalid ID format`);
     return res.status(400).json({ error: "Invalid ID format" });
   }
   try {
