@@ -1,0 +1,33 @@
+{{- if .Values.frontend.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "myapp-chart.fullname" . }}-frontend-nginx
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "myapp-chart.labels" . | nindent 4 }}
+data:
+  default.conf: |
+    upstream backend {
+        server {{ include "myapp-chart.fullname" . }}-backend:{{ .Values.backend.service.port }};
+    }
+    
+    server {
+        listen 80;
+        server_name localhost;
+        
+        location / {
+            root /usr/share/nginx/html;
+            index index.html index.htm;
+            try_files $uri $uri/ /index.html;
+        }
+        
+        location /api/ {
+            proxy_pass http://backend/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
+{{- end }}

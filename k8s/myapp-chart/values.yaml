@@ -1,0 +1,125 @@
+# Global settings
+global:
+  namespace: myapp
+  imageRegistry: ""
+
+# Frontend configuration
+frontend:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: mephisto1339/frontend-image
+    tag: "latest"
+    pullPolicy: Always
+  service:
+    type: ClusterIP
+    port: 80
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+# Backend configuration
+backend:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: mephisto1339/backend-image
+    tag: "latest"
+    pullPolicy: Always
+  service:
+    type: ClusterIP
+    port: 3000
+  env:
+    dbHost: "myapp-postgresql"
+    dbPort: 5432
+    dbUser: "meinnotizblockuser"
+    dbName: "notizblock_prod_db"
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: nginx
+  annotations: {}
+  hosts:
+    - host: myapp.local
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+        - path: /api
+          pathType: Prefix
+          service: backend
+  tls: []
+
+# Database secrets
+secrets:
+  dbCredentials:
+    name: db-credentials
+    data:
+      POSTGRES_PASSWORD: "CHANGEME"
+      POSTGRES_USER: "meinnotizblockuser"
+      POSTGRES_DB: "notizblock_prod_db"
+
+# PostgreSQL subchart configuration
+postgresql:
+  enabled: true
+  global:
+    postgresql:
+      namespace: myapp  # Gleicher Namespace wie Backend
+  auth:
+    username: meinnotizblockuser
+    password: "CHANGEME"
+    database: notizblock_prod_db
+  persistence:
+    enabled: true
+    size: 1Gi
+  primary:
+    resources:
+      limits:
+        memory: 1Gi
+        cpu: 1000m
+      requests:
+        memory: 512Mi
+        cpu: 500m
+  initdb:
+    scripts:
+      init_schema.sql: |
+        CREATE TABLE IF NOT EXISTS notes (
+            id SERIAL PRIMARY KEY,
+            text_content TEXT NOT NULL,
+            is_done BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE OR REPLACE FUNCTION update_updated_at_column()
+        RETURNS TRIGGER AS $$
+        BEGIN
+           NEW.updated_at = NOW();
+           RETURN NEW;
+        END;
+        $$ language 'plpgsql';
+
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_trigger 
+                WHERE tgname = 'update_notes_updated_at'
+            ) THEN
+                CREATE TRIGGER update_notes_updated_at
+                BEFORE UPDATE ON notes
+                FOR EACH ROW
+                EXECUTE FUNCTION update_updated_at_column();
+            END IF;
+        END$$;

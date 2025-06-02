@@ -46,3 +46,25 @@ Thumbs.db
 # Log files
 logs/
 *.log
+
+# Helm values mit sensiblen Daten
+values-prod.yaml
+values-production.yaml
+values-staging.yaml
+*-values.yaml
+*-secrets.yaml
+
+# Kubernetes Konfigurationsdateien mit Credentials
+*-config.yaml
+kubeconfig*
+*.kubeconfig
+
+# Backup-Dateien von Editoren (können sensible Daten enthalten)
+*.bak
+*.backup
+*.tmp
+*~
+
+secrets.yaml
+*-secrets.yaml
+secret*.yaml

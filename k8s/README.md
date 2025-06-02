@@ -1,360 +1,483 @@
-# Kubernetes-Konfiguration für die Mini-Notizblock-Anwendung
+# Mini-Notizblock - Fullstack Kubernetes Application with Helm
 
-Dieses Verzeichnis enthält die Kubernetes-Manifeste für das Deployment der Mini-Notizblock-Anwendung, bestehend aus einem Frontend, einem Backend und einer PostgreSQL-Datenbank.
+## Projektbeschreibung
+
+Dieses Projekt demonstriert die Deployment einer vollständigen Fullstack-Anwendung in Kubernetes mit Helm Charts. Die Anwendung besteht aus:
+
+- **Frontend**: React Anwendung (Nginx)
+- **Backend**: Node.js REST API mit Express
+- **Datenbank**: PostgreSQL (Bitnami Helm Chart)
+- **Ingress**: Nginx Ingress Controller für externen Zugriff
+- **Schema-Migration**: Automatisierte Datenbank-Initialisierung mit Helm Hooks
+
+## Technologie-Stack
+
+- **Container**: Docker
+- **Orchestration**: Kubernetes
+- **Package Manager**: Helm 3
+- **Ingress**: Nginx Ingress Controller
+- **Database**: PostgreSQL 17 (Bitnami Chart)
+- **Frontend**: Nginx + Static Files
+- **Backend**: Node.js + Express + PostgreSQL
+- **CI/CD**: Automatische Schema-Migration via Helm Jobs
+
+## Abgabe-Screenshots
+
+### 1. Helm Release Installation
+
+![Helm List](public/helmList.png)
+
+_Screenshot zeigt erfolgreich installierte Helm Releases mit `helm list`_
+
+### 2. Kubernetes Objekte
+
+![Kubectl All](public/kubectlAll.png)
+
+_Screenshot zeigt alle deployten Kubernetes-Objekte inklusive Pods, Services, Deployments und PVC_
+
+### 3. Job-Status (Schema-Migration)
+
+![Job Status](public/JobStatus.png)
+
+_Screenshot zeigt den automatischen Database-Init-Job, der das Schema erstellt_
+
+### 4. Anwendung funktioniert
+
+![Curl Test](public/curl.png)
+
+_Screenshot zeigt erfolgreichen API-Zugriff über Ingress mit `curl http://myapp.local/api/notes`_
+
+### 5. Helm Upgrade
+
+![Upgrade](public/upgrade.png)
+
+_Screenshot zeigt Upgrade mit geänderten Replikazahlen_
+
+### 6. Deinstallation
+
+![Deinstall](public/deinstall.png)
+
+_Screenshot zeigt vollständige Deinstallation aller Komponenten_
+
+## Helm Chart Struktur
+
+```
+myapp-chart/
+├── Chart.yaml                   # Chart Metadaten und Dependencies
+├── values.yaml                  # Standard-Konfiguration (NICHT für Production!)
+├── values-example.yaml          # Sichere Beispiel-Konfiguration
+├── templates/
+│   ├── namespace.yaml          # Namespace Definition
+│   ├── backend-deployment.yaml # Backend Deployment
+│   ├── frontend-deployment.yaml# Frontend Deployment
+│   ├── backend-service.yaml    # Backend Service
+│   ├── frontend-service.yaml   # Frontend Service
+│   ├── ingress.yaml            # Ingress Configuration
+│   ├── secrets.yaml            # Database Credentials
+│   ├── frontend-configmap.yaml # Nginx Configuration
+│   ├── db-init-job.yaml        # Automatische Schema-Migration (Helm Hook)
+│   └── _helpers.tpl            # Template-Hilfsfunktionen
+└── charts/                     # Abhängigkeiten (PostgreSQL wird extern installiert)
+```
 
 ## Voraussetzungen
 
-- Ein laufender Kubernetes-Cluster (z.B. Docker Desktop, Minikube, GKE, AKS, EKS).
-- `kubectl` CLI konfiguriert für den Zugriff auf deinen Cluster.
-- Die Docker-Images für Frontend (`mephisto1339/frontend-image:latest`) und Backend (`mephisto1339/backend-image:latest`) müssen in einer Registry verfügbar sein, auf die dein Cluster zugreifen kann (oder lokal im Cluster, falls z.B. Docker Desktop verwendet wird).
-- Ein Ingress Controller (wie Nginx Ingress Controller) muss im Cluster installiert sein, wenn Ingress verwendet werden soll.
-- Optional: Für das Monitoring ein installierter Kubernetes Metrics Server und ein Monitoring-Stack wie `kube-prometheus-stack`.
-
-### Installation des Nginx Ingress Controllers (mit Helm)
-
-Wenn du die `ingress.yaml` verwenden möchtest, um deine Anwendung extern zugänglich zu machen, benötigst du einen Ingress Controller in deinem Cluster. Hier ist eine Anleitung zur Installation des Nginx Ingress Controllers mit Helm:
-
-1.  **Helm installieren (falls noch nicht geschehen):**
-    Folge der offiziellen Anleitung unter [helm.sh/docs/intro/install/](https://helm.sh/docs/intro/install/)
-
-2.  **Nginx Ingress Controller Helm Repository hinzufügen:**
-
-    ```bash
-    helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-    helm repo update
-    ```
-
-3.  **Ingress Controller installieren:**
-    Du kannst den Ingress Controller in einem eigenen Namespace (z.B. `ingress-nginx`) oder im `kube-system` Namespace installieren.
-
-    - **Option A: Installation in einem neuen Namespace `ingress-nginx` (empfohlen):**
-
-      ```bash
-      kubectl create namespace ingress-nginx
-      helm install ingress-nginx ingress-nginx/ingress-nginx \
-        --namespace ingress-nginx \
-        --set controller.replicaCount=1 \
-        --set controller.nodeSelector."kubernetes\.io/os"=linux \
-        --set controller.admissionWebhooks.patch.nodeSelector."kubernetes\.io/os"=linux \
-        --set defaultBackend.nodeSelector."kubernetes\.io/os"=linux
-      ```
-
-      _Hinweis für Docker Desktop, Minikube oder andere lokale Cluster:_ Manchmal sind die Standard-Replikatanzahlen zu hoch oder es gibt Probleme mit der Ressourcenanforderung. `controller.replicaCount=1` ist oft ausreichend für lokale Setups. Die `nodeSelector` sind wichtig, um sicherzustellen, dass die Pods auf Linux-Nodes laufen, was bei Windows mit WSL2 der Fall ist.
-
-    - **Option B: Installation für Docker Desktop (vereinfachte Konfiguration):**
-      Für Docker Desktop kann es hilfreich sein, spezifische Werte zu setzen, die besser mit der lokalen Umgebung harmonieren, insbesondere wenn der LoadBalancer-Service nicht sofort eine externe IP bekommt.
-      ```bash
-      kubectl create namespace ingress-nginx # Falls noch nicht vorhanden
-      helm install ingress-nginx ingress-nginx/ingress-nginx \
-        --namespace ingress-nginx \
-        --set controller.replicaCount=1 \
-        --set controller.service.type=NodePort \
-        --set controller.service.nodePorts.http=32080 \
-        --set controller.service.nodePorts.https=32443 \
-        --set controller.admissionWebhooks.patch.nodeSelector."kubernetes\.io/os"=linux \
-        --set defaultBackend.nodeSelector."kubernetes\.io/os"=linux \
-        --set controller.nodeSelector."kubernetes\.io/os"=linux
-      ```
-      Mit dieser Konfiguration wird der Ingress Controller über NodePorts (`32080` für HTTP, `32443` für HTTPS) auf `localhost` erreichbar. Du kannst dann `localhost:32080` als externe IP für deine Host-Einträge verwenden.
-
-4.  **Installation überprüfen:**
-    Warte einige Minuten, bis alle Pods des Ingress Controllers laufen:
-
-    ```bash
-    kubectl get pods -n ingress-nginx -w
-    ```
-
-    Überprüfe den Service des Ingress Controllers. Bei Cloud-Providern sollte er eine `EXTERNAL-IP` vom Typ `LoadBalancer` erhalten. Bei lokalen Setups (wie Docker Desktop mit der NodePort-Konfiguration oben) greifst du über `localhost:<NodePort>` zu.
-
-    ```bash
-    kubectl get services -n ingress-nginx
-    ```
-
-    Wenn du die NodePort-Variante für Docker Desktop gewählt hast, sollte der Service `ingress-nginx-controller` die Ports `80:32080/TCP` und `443:32443/TCP` anzeigen.
-
-5.  **IngressClass in `ingress.yaml` sicherstellen:**
-    Deine `k8s/ingress.yaml` sollte die korrekte `ingressClassName` verwenden. Für den Nginx Ingress Controller ist dies üblicherweise `nginx`.
-    ```yaml
-    # k8s/ingress.yaml
-    apiVersion: networking.k8s.io/v1
-    kind: Ingress
-    metadata:
-      name: myapp-ingress
-      # Ggf. Annotationen hier
-    spec:
-      ingressClassName: nginx # Wichtig!
-      rules:
-      # ... deine Regeln
-    ```
-
-Nachdem der Ingress Controller läuft, kannst du mit der Deployment-Reihenfolge deiner Anwendung fortfahren und die `ingress.yaml` anwenden. Der Zugriff erfolgt dann wie im Abschnitt "Zugriff auf die Anwendung" beschrieben, wobei die externe IP des Ingress Controllers (oder `localhost` bei Docker Desktop NodePort-Setup) verwendet wird.
-
-## Verzeichnisstruktur
-
-```
-k8s/
-├── backend/
-│   ├── deployment.yaml
-│   └── service.yaml
-├── database/
-│   ├── configmap.yaml      # Enthält das initial_schema.sql
-│   ├── deployment.yaml
-│   ├── pvc.yaml            # PersistentVolumeClaim für die Datenbank (optional, aber empfohlen)
-│   ├── secret.yaml         # Enthält die Datenbank-Credentials
-│   └── service.yaml
-├── frontend/
-│   ├── deployment.yaml
-│   └── service.yaml
-├── ingress.yaml            # Ingress-Ressource für den externen Zugriff
-└── README.md               # Diese Datei
-```
-
-## Komponenten
-
-Alle Komponenten werden im Namespace `myapp` deployed.
-
-### 1. Namespace
-
-Ein Namespace `myapp` wird verwendet, um die Ressourcen dieser Anwendung zu isolieren.
-Erstellung (falls noch nicht geschehen):
+### System-Requirements
 
 ```bash
-kubectl create namespace myapp
+# Kubernetes Cluster (Docker Desktop, Minikube, etc.)
+kubectl version
+
+# Helm 3 installiert
+helm version
+
+# Docker für Image-Building
+docker --version
 ```
 
-### 2. Datenbank (PostgreSQL)
-
-- **ConfigMap (`database/configmap.yaml`)**:
-  - Name: `db-schema`
-  - Enthält das SQL-Skript `initial_schema.sql` zur Erstellung der `notes`-Tabelle. Dieses Skript wird beim ersten Start des Datenbankcontainers ausgeführt, wenn das Datenverzeichnis leer ist.
-- **Secret (`database/secret.yaml`)**:
-  - Name: `db-credentials`
-  - Enthält das `POSTGRES_PASSWORD` für den Datenbankbenutzer. Es wird empfohlen, die Werte in dieser Datei (Base64-kodiert) vor dem Anwenden anzupassen oder die Datei als Vorlage zu verwenden und das Secret manuell mit `kubectl create secret generic` zu erstellen.
-- **PersistentVolumeClaim (`database/pvc.yaml`) (Empfohlen für Datenpersistenz)**:
-  - Name: `db-pvc`
-  - Fordert persistenten Speicher für die Datenbank an (z.B. 1Gi).
-  - Die tatsächliche Bereitstellung des Speichers hängt von der Konfiguration deines Kubernetes-Clusters und der verfügbaren `StorageClass` ab.
-  - Wenn ein PVC verwendet wird, sollte das `emptyDir`-Volume im `database/deployment.yaml` durch dieses PVC ersetzt werden.
-- **Deployment (`database/deployment.yaml`)**:
-  - Name: `database`
-  - Verwendet das Image `postgres:17-alpine`.
-  - Definiert Umgebungsvariablen:
-    - `POSTGRES_USER`: `meinnotizblockuser`
-    - `POSTGRES_PASSWORD`: Wird aus dem Secret `db-credentials` bezogen.
-    - `POSTGRES_DB`: `notizblock_prod_db` (diese Datenbank wird automatisch erstellt).
-  - **Datenpersistenz:**
-    - **Option 1 (Nicht-Persistent):** Verwendet ein `emptyDir`-Volume für `/var/lib/postgresql/data`. **Achtung:** Daten gehen verloren, wenn der Pod neu gestartet wird. Ein benutzerdefiniertes `command` und `args` kann verwendet werden, um `initdb` bei jedem Start mit `emptyDir` zu erzwingen.
-    - **Option 2 (Persistent - Empfohlen):** Verwendet ein Volume, das durch den `db-pvc` (PersistentVolumeClaim) bereitgestellt wird, gemountet unter `/var/lib/postgresql/data`. In diesem Fall wird das `initial_schema.sql` nur beim allerersten Start ausgeführt, wenn das Volume leer ist. Das benutzerdefinierte `command` zum Leeren des Verzeichnisses sollte entfernt werden.
-  - Mountet die `db-schema`-ConfigMap nach `/docker-entrypoint-initdb.d/`, damit das `initial_schema.sql`-Skript automatisch ausgeführt wird (wenn das Datenverzeichnis initial leer ist).
-  - Definiert Readiness- und Liveness-Probes.
-- **Service (`database/service.yaml`)**:
-  - Name: `database`
-  - Typ: `ClusterIP` (Standard)
-  - Macht den PostgreSQL-Server auf Port `5432` für andere Pods im Cluster (innerhalb des `myapp`-Namespace unter dem DNS-Namen `database`) verfügbar.
-
-### 3. Backend (Node.js API)
-
-- **Deployment (`backend/deployment.yaml`)**:
-  - Name: `backend`
-  - Verwendet das Image `mephisto1339/backend-image:latest`.
-  - Definiert Umgebungsvariablen für die Datenbankverbindung:
-    - `DB_HOST`: `database` (verweist auf den Datenbank-Service)
-    - `DB_PORT`: `5432`
-    - `DB_USER`: `meinnotizblockuser`
-    - `DB_NAME`: `notizblock_prod_db`
-    - `DB_PASSWORD`: Wird aus dem Secret `db-credentials` bezogen.
-  - Lauscht auf Port `3000`.
-- **Service (`backend/service.yaml`)**:
-  - Name: `backend` (oder `backend-service`, stelle Konsistenz sicher)
-  - Typ: `ClusterIP` (Standard)
-  - Macht die Backend-API auf Port `3000` für andere Pods im Cluster verfügbar.
-
-### 4. Frontend (React/Static)
-
-- **Deployment (`frontend/deployment.yaml`)**:
-  - Name: `frontend`
-  - Verwendet das Image `mephisto1339/frontend-image:latest`.
-  - Der Container (vermutlich Nginx oder ein ähnlicher Webserver) lauscht auf Port `80`.
-- **Service (`frontend/service.yaml`)**:
-  - Name: `frontend` (oder `frontend-service`, stelle Konsistenz sicher)
-  - Typ: `ClusterIP` (Standard, wenn Ingress verwendet wird). Kann auch `LoadBalancer` oder `NodePort` sein für direkten externen Zugriff ohne Ingress.
-  - Macht das Frontend auf Port `80` intern im Cluster verfügbar.
-
-### 5. Ingress (`ingress.yaml`)
-
-- **Ingress (`ingress.yaml`)**:
-  - Name: `myapp-ingress`
-  - Definiert Regeln für den externen Zugriff auf die Anwendung über HTTP/HTTPS.
-  - Erfordert einen installierten Ingress Controller im Cluster (z.B. Nginx Ingress Controller).
-  - `ingressClassName`: Gibt den zu verwendenden Ingress Controller an (z.B. `nginx`).
-  - **Host-basierte Regeln:**
-    - Definiert einen Hostnamen (z.B. `myapp.local` für lokale Entwicklung, oder eine öffentliche Domain).
-  - **Pfad-basierte Regeln:**
-    - Leitet Anfragen an `http://<host>/api/*` an den `backend`-Service auf Port `3000` weiter.
-    - Leitet Anfragen an `http://<host>/*` (alle anderen Pfade) an den `frontend`-Service auf Port `80` weiter.
-  - Kann Annotationen für spezifisches Verhalten enthalten (z.B. `rewrite-target`, SSL-Konfiguration).
-
-## Deployment-Reihenfolge
-
-Es wird empfohlen, die Ressourcen in der folgenden Reihenfolge anzuwenden, um Abhängigkeiten korrekt aufzulösen:
-
-1.  **Namespace (falls noch nicht erstellt):**
-    ```bash
-    kubectl create namespace myapp
-    ```
-2.  **Datenbank-Ressourcen:**
-    ```bash
-    kubectl apply -f k8s/database/secret.yaml -n myapp
-    kubectl apply -f k8s/database/configmap.yaml -n myapp
-    # Optional, aber empfohlen für Persistenz:
-    kubectl apply -f k8s/database/pvc.yaml -n myapp
-    kubectl apply -f k8s/database/deployment.yaml -n myapp # Stelle sicher, dass dies das PVC verwendet, falls erstellt
-    kubectl apply -f k8s/database/service.yaml -n myapp
-    ```
-3.  **Backend-Ressourcen:**
-    ```bash
-    kubectl apply -f k8s/backend/deployment.yaml -n myapp
-    kubectl apply -f k8s/backend/service.yaml -n myapp
-    ```
-4.  **Frontend-Ressourcen:**
-    ```bash
-    kubectl apply -f k8s/frontend/deployment.yaml -n myapp
-    kubectl apply -f k8s/frontend/service.yaml -n myapp
-    ```
-5.  **Ingress-Ressource (nachdem die Services erstellt wurden):**
-    ```bash
-    kubectl apply -f k8s/ingress.yaml -n myapp
-    ```
-
-Alternativ können alle YAML-Dateien in einem Verzeichnis auf einmal angewendet werden (wobei `kubectl` versucht, die Reihenfolge intelligent zu wählen, aber die explizite Reihenfolge ist sicherer für Abhängigkeiten wie Secrets und ConfigMaps):
+### Nginx Ingress Controller installieren
 
 ```bash
-kubectl apply -f k8s/database -n myapp
-kubectl apply -f k8s/backend -n myapp
-kubectl apply -f k8s/frontend -n myapp
-kubectl apply -f k8s/ingress.yaml -n myapp # Ingress zuletzt oder nach den Services
+# Ingress Controller installieren
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.1/deploy/static/provider/cloud/deploy.yaml
+
+# Installation überprüfen
+kubectl get pods -n ingress-nginx
+
+# Für lokale Entwicklung (Docker Desktop)
+kubectl wait --namespace ingress-nginx \
+  --for=condition=ready pod \
+  --selector=app.kubernetes.io/component=controller \
+  --timeout=120s
 ```
 
-Oder für das gesamte `k8s`-Verzeichnis (rekursiv, aber die Reihenfolge ist dann weniger kontrolliert):
+## Installation
+
+### 1. Repository klonen
 
 ```bash
-kubectl apply -R -f k8s -n myapp
+git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git
+cd YOUR_REPO/k8s
+```
+
+### 2. Dependencies vorbereiten
+
+```bash
+# Bitnami Repository hinzufügen
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo update
+
+# Chart Dependencies aktualisieren
+helm dependency update myapp-chart
+```
+
+### 3. PostgreSQL installieren (Separate Installation empfohlen)
+
+```bash
+# PostgreSQL im korrekten Namespace installieren
+helm install myapp-postgresql bitnami/postgresql \
+  --namespace myapp \
+  --create-namespace \
+  --set auth.username=meinnotizblockuser \
+  --set auth.password=EinSehrSicheresPasswort! \
+  --set auth.database=notizblock_prod_db \
+  --set persistence.enabled=true \
+  --set persistence.size=1Gi \
+  --set primary.resources.limits.memory=1Gi \
+  --set primary.resources.limits.cpu=1000m \
+  --set primary.resources.requests.memory=512Mi \
+  --set primary.resources.requests.cpu=500m
+```
+
+### 4. Anwendung installieren
+
+```bash
+# Mit sicheren Credentials (Development)
+helm install myapp-release myapp-chart \
+  --create-namespace \
+  --set backend.image.repository=mephisto1339/backend-image \
+  --set frontend.image.repository=mephisto1339/frontend-image \
+  --set backend.env.dbUser=meinnotizblockuser \
+  --set backend.env.dbName=notizblock_prod_db \
+  --set secrets.dbCredentials.data.POSTGRES_PASSWORD=EinSehrSicheresPasswort! \
+  --set secrets.dbCredentials.data.POSTGRES_USER=meinnotizblockuser \
+  --set secrets.dbCredentials.data.POSTGRES_DB=notizblock_prod_db
+```
+
+### 5. Hosts-Datei konfigurieren
+
+```bash
+# Windows: C:\Windows\System32\drivers\etc\hosts
+# Linux/Mac: /etc/hosts
+127.0.0.1 myapp.local
+```
+
+## Automatische Schema-Migration
+
+Das Chart enthält einen automatischen Database-Init-Job (`templates/db-init-job.yaml`), der:
+
+- **Helm Hook**: Läuft automatisch nach `helm install` und `helm upgrade`
+- **Wartet auf PostgreSQL**: Verwendet `pg_isready` für Health-Check
+- **Erstellt Schema**: notes-Tabelle mit Triggern für Timestamps
+- **Fügt Beispieldaten ein**: Nur wenn Tabelle leer ist
+- **Auto-Cleanup**: Job wird nach erfolgreichem Abschluss gelöscht
+
+```yaml
+annotations:
+  "helm.sh/hook": post-install,post-upgrade
+  "helm.sh/hook-weight": "1"
+  "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 ```
 
 ## Zugriff auf die Anwendung
 
-Nachdem alle Pods laufen und der Ingress konfiguriert ist:
+- **Frontend**: http://myapp.local/
+- **Backend API**: http://myapp.local/api/notes
+- **Health Check**: http://myapp.local/api/health
 
-1.  **Stelle sicher, dass dein Ingress Controller eine externe IP-Adresse hat:**
-
-    ```bash
-    kubectl get services -n <namespace-des-ingress-controllers> # z.B. ingress-nginx oder default
-    ```
-
-    Suche nach dem Service des Ingress Controllers (oft Typ `LoadBalancer`) und seiner `EXTERNAL-IP`.
-
-2.  **Konfiguriere deinen lokalen Host-Eintrag (für lokale Entwicklung mit `myapp.local`):**
-    Füge deiner lokalen `hosts`-Datei (z.B. `C:\Windows\System32\drivers\etc\hosts` unter Windows oder `/etc/hosts` unter Linux/macOS) einen Eintrag hinzu:
-
-    ```
-    <EXTERNE-IP-DES-INGRESS-CONTROLLERS> myapp.local
-    ```
-
-    Wenn du Docker Desktop verwendest, ist die externe IP oft `localhost` oder `127.0.0.1`.
-
-3.  **Greife auf die Anwendung zu:**
-    Öffne `http://myapp.local` in deinem Browser.
-    - Anfragen an `http://myapp.local/` sollten das Frontend anzeigen.
-    - Anfragen vom Frontend an `/api/notes` (intern umgeleitet zu `http://myapp.local/api/notes`) sollten vom Backend verarbeitet werden.
-
-**Alternativer Zugriff (ohne Ingress, z.B. über Frontend Service vom Typ `LoadBalancer` oder `NodePort`):**
-Wenn du keinen Ingress verwendest und dein `frontend-service` vom Typ `LoadBalancer` ist:
+### API-Endpunkte
 
 ```bash
-kubectl get services -n myapp
+# Alle Notizen abrufen
+curl http://myapp.local/api/notes
+
+# Neue Notiz erstellen
+curl -X POST http://myapp.local/api/notes \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Neue Notiz via API", "is_done": false}'
+
+# Notiz aktualisieren
+curl -X PUT http://myapp.local/api/notes/1 \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Aktualisierte Notiz", "is_done": true}'
+
+# Notiz löschen
+curl -X DELETE http://myapp.local/api/notes/1
 ```
 
-Suche nach dem `frontend-service` und seiner `EXTERNAL-IP`. Wenn `EXTERNAL-IP` auf `<pending>` steht, warte einige Minuten. Bei lokalen Clustern wie Minikube verwende `minikube service frontend-service -n myapp --url`. Für Docker Desktop ist der Dienst oft unter `localhost:<PORT>` erreichbar, wobei `<PORT>` der Port ist, der in der `kubectl get services` Ausgabe für den `frontend-service` angezeigt wird.
+## Wartung und Updates
 
-## Kubernetes Monitoring (Metrics Server, Prometheus & Grafana)
+### Upgrade durchführen
 
-Wenn ein Monitoring-Stack im Kubernetes-Cluster installiert ist (z.B. Kubernetes Metrics Server und der `kube-prometheus-stack` im Namespace `monitoring`), kannst du wie folgt auf die Metriken und Dashboards zugreifen:
+```bash
+# Replikazahlen ändern
+helm upgrade myapp-release myapp-chart \
+  --set backend.replicaCount=3 \
+  --set frontend.replicaCount=3
 
-### 1. Kubernetes Metrics Server
+# Image-Tags aktualisieren
+helm upgrade myapp-release myapp-chart \
+  --set backend.image.tag=v2.0.0 \
+  --set frontend.image.tag=v2.0.0
 
-Stellt grundlegende Ressourcenmetriken (CPU, Speicher) für Pods und Nodes bereit. Diese werden von `kubectl top` verwendet.
+# Rollout Status überwachen
+kubectl rollout status deployment/myapp-release-myapp-chart-backend -n myapp
+kubectl rollout status deployment/myapp-release-myapp-chart-frontend -n myapp
+```
 
-- **Überprüfung (nachdem der Metrics Server installiert und bereit ist):**
-  ```bash
-  kubectl top nodes
-  kubectl top pods -n myapp # Für die Pods dieser Anwendung
-  kubectl top pods --all-namespaces # Für alle Pods in allen Namespaces
-  ```
+### Logs anzeigen
 
-### 2. Prometheus Dashboard
+```bash
+# Backend Logs (alle Replicas)
+kubectl logs -f -n myapp -l app.kubernetes.io/component=backend
 
-Prometheus sammelt detaillierte Metriken vom Cluster und den Anwendungen.
+# Frontend Logs
+kubectl logs -f -n myapp -l app.kubernetes.io/component=frontend
 
-- **Port-Forward zum Prometheus-Service:**
-  (Der Service-Name kann je nach Installation variieren, `prometheus-kube-prometheus-prometheus` ist üblich für den `kube-prometheus-stack`)
-  ```bash
-  kubectl port-forward -n monitoring svc/prometheus-kube-prometheus-prometheus 9090:9090
-  ```
-- **Zugriff:**
-  Öffne `http://localhost:9090` in deinem Browser.
-  Hier kannst du Metriken abfragen (PromQL) und den Status der Scrape-Ziele einsehen.
+# PostgreSQL Logs
+kubectl logs -f -n myapp myapp-postgresql-0
 
-### 3. Grafana Dashboard
+# Database-Init-Job Logs (bei Fehlern)
+kubectl logs -n myapp job/myapp-release-myapp-chart-db-init
+```
 
-Grafana visualisiert die von Prometheus gesammelten Metriken in anpassbaren Dashboards.
+### Status überwachen
 
-- **Admin-Passwort für Grafana abrufen:**
-  (Der Secret-Name kann je nach Installation variieren, `prometheus-grafana` ist üblich für den `kube-prometheus-stack`. Der Benutzername ist `admin`.)
-  ```bash
-  kubectl get secret -n monitoring prometheus-grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
-  ```
-- **Port-Forward zum Grafana-Service:**
-  (Der Service-Name kann je nach Installation variieren, `prometheus-grafana` ist üblich)
-  ```bash
-  kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80
-  ```
-  (Der Grafana-Service im Chart lauscht oft intern auf Port 80, wir leiten ihn auf unseren lokalen Port 3000 weiter).
-- **Zugriff:**
-  Öffne `http://localhost:3000` in deinem Browser.
-  Melde dich mit dem Benutzernamen `admin` und dem zuvor abgerufenen Passwort an.
-  Der `kube-prometheus-stack` installiert in der Regel bereits einige nützliche Dashboards zur Überwachung des Kubernetes-Clusters. Diese findest du unter "Dashboards" oder "Browse".
+```bash
+# Alle Ressourcen anzeigen
+kubectl get all -n myapp
 
-**Hinweis zum Monitoring-Stack:**
-Die Befehle setzen voraus, dass der Monitoring-Stack im Namespace `monitoring` installiert wurde und die Service-Namen den gängigen Konventionen des `kube-prometheus-stack` Helm-Charts entsprechen. Passe die Namespace- und Service-Namen bei Bedarf an deine spezifische Installation an. Die Installation des Monitoring-Stacks selbst ist nicht Teil dieser Anwendungs-YAMLs, sondern erfolgt separat (z.B. Metrics Server über `kubectl apply`, Prometheus/Grafana über Helm).
+# Persistent Volumes
+kubectl get pvc -n myapp
 
-## Wichtige Hinweise
+# Ingress Status
+kubectl get ingress -n myapp
 
-- **Datenpersistenz:** Die Verwendung eines `PersistentVolumeClaim` (PVC) für die Datenbank wird dringend empfohlen, um Datenverlust bei Pod-Neustarts zu vermeiden. Ohne PVC (mit `emptyDir`) gehen alle Datenbankinhalte verloren.
-- **Secrets:** Das `database/secret.yaml` enthält Platzhalter oder Beispielwerte. Stelle sicher, dass du sichere, Base64-kodierte Passwörter verwendest und die Datei entsprechend anpasst oder das Secret manuell erstellst.
-- **Images:** Stelle sicher, dass die referenzierten Docker-Images (`mephisto1339/frontend-image:latest`, `mephisto1339/backend-image:latest`) für deinen Kubernetes-Cluster erreichbar sind.
-- **Ingress Controller:** Für die Verwendung von `ingress.yaml` muss ein Ingress Controller im Cluster aktiv sein.
+# Events (bei Problemen)
+kubectl get events -n myapp --sort-by='.lastTimestamp' | tail -20
+```
 
-## Troubleshooting
+## Deinstallation
 
-- **Pods nicht bereit (`Pending`, `CrashLoopBackOff`, `Error`):**
-  ```bash
-  kubectl get pods -n myapp
-  kubectl describe pod <pod-name> -n myapp
-  kubectl logs <pod-name> -n myapp
-  kubectl logs <pod-name> -c <container-name> -n myapp # Falls mehrere Container im Pod
-  kubectl logs <pod-name> -c <container-name> -n myapp --previous # Für gecrashte Container
-  ```
-- **Service nicht erreichbar:**
-  Überprüfe die Selektoren im Service und die Labels der Pods.
-  Überprüfe die Endpunkte des Services: `kubectl get endpoints <service-name> -n myapp`.
-- **Ingress-Probleme:**
-  Überprüfe die Ingress-Konfiguration: `kubectl describe ingress myapp-ingress -n myapp`.
-  Überprüfe die Logs des Ingress Controllers: `kubectl logs -l <label-des-ingress-controller-pods> -n <namespace-des-ingress-controllers>`.
-- **Metrics Server Probleme (`kubectl top nodes` schlägt fehl):**
-  Überprüfe den Status und die Logs des `metrics-server` Pods im `kube-system` Namespace. Für lokale Setups wie Docker Desktop muss oft das `metrics-server` Deployment mit dem Argument `--kubelet-insecure-tls` gepatcht werden.
-  ```bash
-  kubectl get pods -n kube-system | grep metrics-server
-  kubectl logs -n kube-system <metrics-server-pod-name>
-  # Patch-Befehl (falls nötig):
-  # kubectl patch deployment metrics-server -n kube-system --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--kubelet-insecure-tls"}]'
-  ```
+```bash
+# Anwendung deinstallieren
+helm uninstall myapp-release
+
+# PostgreSQL deinstallieren
+helm uninstall myapp-postgresql
+
+# Namespace löschen (optional, entfernt auch PVCs)
+kubectl delete namespace myapp
+
+# Überprüfung
+kubectl get all -n myapp
+```
+
+## Sicherheit - Handhabung sensibler Daten
+
+⚠️ **KRITISCHER SICHERHEITSHINWEIS**: Die `values.yaml` in diesem Repository enthält Beispiel-Credentials und ist **NICHT für Production geeignet**!
+
+### Für die Abgabe/Demonstration
+
+Die aktuelle `values.yaml` enthält Beispiel-Passwörter zur einfachen Demonstration. In einem echten Projekt würden diese Werte niemals in Git committed werden.
+
+### Production-sichere Alternativen
+
+#### Option 1: External Secrets Operator (Empfohlen)
+
+```bash
+# External Secrets installieren
+helm repo add external-secrets https://charts.external-secrets.io
+helm install external-secrets external-secrets/external-secrets \
+  -n external-secrets-system \
+  --create-namespace
+
+# Secrets aus Azure Key Vault, AWS Secrets Manager, etc.
+```
+
+#### Option 2: Helm Secrets Plugin
+
+```bash
+# Helm Secrets Plugin installieren
+helm plugin install https://github.com/jkroepke/helm-secrets
+
+# Verschlüsselte values erstellen
+helm secrets enc values-prod.yaml
+
+# Deployment mit verschlüsselten Werten
+helm secrets install myapp-release myapp-chart -f values-prod.yaml
+```
+
+#### Option 3: --set Parameter zur Laufzeit
+
+```bash
+# Sichere Deployment-Praxis
+helm install myapp-release myapp-chart \
+  --set secrets.dbCredentials.data.POSTGRES_PASSWORD=$(openssl rand -base64 32) \
+  --set secrets.dbCredentials.data.POSTGRES_USER=produser \
+  --set secrets.dbCredentials.data.POSTGRES_DB=proddb \
+  --set backend.image.repository=your-registry/backend \
+  --set frontend.image.repository=your-registry/frontend
+```
+
+#### Option 4: Separate Secret-Erstellung
+
+```bash
+# Secret manuell erstellen
+kubectl create secret generic db-credentials \
+  --from-literal=POSTGRES_PASSWORD=$(openssl rand -base64 32) \
+  --from-literal=POSTGRES_USER=produser \
+  --from-literal=POSTGRES_DB=proddb \
+  -n myapp
+
+# Chart ohne Secret-Template deployen
+helm install myapp-release myapp-chart --set secrets.dbCredentials.create=false
+```
+
+### values-example.yaml für sichere Referenz
+
+Eine sichere `values-example.yaml` ist verfügbar, die zeigt, wie sensible Daten gehandhabt werden sollten:
+
+```yaml
+# Kopieren und anpassen
+cp values-example.yaml values-prod.yaml
+
+# Sensible Werte ersetzen
+# NIEMALS values-prod.yaml in Git committen!
+echo "values-prod.yaml" >> .gitignore
+```
+
+## Monitoring und Debugging
+
+### Health Checks
+
+```bash
+# Application Health
+curl http://myapp.local/api/health
+
+# Database Connectivity
+kubectl exec -it -n myapp deployment/myapp-release-myapp-chart-backend -- \
+  nc -zv myapp-postgresql 5432
+
+# Pod Resource Usage
+kubectl top pods -n myapp
+```
+
+### Troubleshooting
+
+#### Backend kann nicht auf Database zugreifen
+
+```bash
+# DNS-Resolution testen
+kubectl exec -it -n myapp deployment/myapp-release-myapp-chart-backend -- \
+  nslookup myapp-postgresql
+
+# Database Credentials überprüfen
+kubectl get secret db-credentials -n myapp -o yaml
+
+# PostgreSQL Logs
+kubectl logs -f -n myapp myapp-postgresql-0
+```
+
+#### Ingress funktioniert nicht
+
+```bash
+# Ingress Controller Status
+kubectl get pods -n ingress-nginx
+
+# Ingress Details
+kubectl describe ingress myapp-release-myapp-chart-ingress -n myapp
+
+# Service Endpoints
+kubectl get endpoints -n myapp
+```
+
+#### Schema-Migration fehlgeschlagen
+
+```bash
+# Job-Status prüfen
+kubectl get jobs -n myapp
+
+# Job-Logs anzeigen
+kubectl logs -n myapp job/myapp-release-myapp-chart-db-init
+
+# Manuell in Database einloggen
+kubectl exec -it -n myapp myapp-postgresql-0 -- \
+  psql -U meinnotizblockuser -d notizblock_prod_db -c "\dt"
+```
+
+## Entwicklung und Testing
+
+### Lokale Entwicklung
+
+```bash
+# Port-Forward für direkte Database-Verbindung
+kubectl port-forward -n myapp svc/myapp-postgresql 5432:5432
+
+# Port-Forward für Backend-Testing
+kubectl port-forward -n myapp svc/myapp-release-myapp-chart-backend 3000:3000
+
+# Port-Forward für Frontend-Testing
+kubectl port-forward -n myapp svc/myapp-release-myapp-chart-frontend 8080:80
+```
+
+### Testing der API
+
+```bash
+# Automatisierte Tests
+curl -s http://myapp.local/api/notes | jq '.[0].text'
+
+# Load Testing mit Apache Bench
+ab -n 100 -c 10 http://myapp.local/api/notes
+
+# Health Check Monitoring
+watch -n 5 'curl -s http://myapp.local/api/health | jq'
+```
+
+## Chart-Entwicklung
+
+### Template-Testing
+
+```bash
+# Template-Rendering testen
+helm template myapp-release myapp-chart --debug
+
+# Syntax-Validierung
+helm lint myapp-chart
+
+# Dry-run Installation
+helm install myapp-release myapp-chart --dry-run --debug
+```
+
+### Werte-Override
+
+```bash
+# Verschiedene Environments
+helm install myapp-dev myapp-chart -f values-dev.yaml
+helm install myapp-staging myapp-chart -f values-staging.yaml
+helm install myapp-prod myapp-chart -f values-prod.yaml
+```
+
+## Lizenz
+
+MIT License - siehe LICENSE-Datei für Details.
+
+## Support und Beitrag
+
+- **Issues**: Für Bugs und Feature-Requests
+- **Pull Requests**: Willkommen für Verbesserungen
+- **Dokumentation**: Verbesserungen der README sind erwünscht
+
+---
+
+**Hinweis**: Diese Dokumentation ist Teil einer Kubernetes/Helm-Abgabe und demonstriert Best Practices für Container-Orchestrierung, Package Management und sichere Credential-Handhabung in Kubernetes-Umgebungen.

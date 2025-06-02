@@ -1,0 +1,98 @@
+{{- if .Values.backend.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "myapp-chart.fullname" . }}-db-init
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "myapp-chart.labels" . | nindent 4 }}
+    app.kubernetes.io/component: db-init
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "1"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  template:
+    metadata:
+      labels:
+        {{- include "myapp-chart.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: db-init
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: db-init
+        image: docker.io/bitnami/postgresql:17.5.0-debian-12-r8
+        env:
+        - name: PGHOST
+          value: "{{ .Values.backend.env.dbHost }}"
+        - name: PGPORT
+          value: "{{ .Values.backend.env.dbPort }}"
+        - name: PGUSER
+          value: "{{ .Values.backend.env.dbUser }}"
+        - name: PGDATABASE
+          value: "{{ .Values.backend.env.dbName }}"
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.secrets.dbCredentials.name }}
+              key: POSTGRES_PASSWORD
+        command:
+        - /bin/bash
+        - -c
+        - |
+          echo "Waiting for PostgreSQL to be ready..."
+          until pg_isready -h $PGHOST -p $PGPORT -U $PGUSER; do
+            echo "PostgreSQL is not ready yet, waiting..."
+            sleep 5
+          done
+          
+          echo "PostgreSQL is ready! Creating schema..."
+          psql << 'EOF'
+          CREATE TABLE IF NOT EXISTS notes (
+              id SERIAL PRIMARY KEY,
+              text_content TEXT NOT NULL,
+              is_done BOOLEAN DEFAULT FALSE,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+
+          CREATE OR REPLACE FUNCTION update_updated_at_column()
+          RETURNS TRIGGER AS $$
+          BEGIN
+             NEW.updated_at = NOW();
+             RETURN NEW;
+          END;
+          $$ language 'plpgsql';
+
+          DO $$
+          BEGIN
+              IF NOT EXISTS (
+                  SELECT 1 FROM pg_trigger 
+                  WHERE tgname = 'update_notes_updated_at'
+              ) THEN
+                  CREATE TRIGGER update_notes_updated_at
+                  BEFORE UPDATE ON notes
+                  FOR EACH ROW
+                  EXECUTE FUNCTION update_updated_at_column();
+              END IF;
+          END$$;
+
+          -- Insert sample data if table is empty
+          INSERT INTO notes (text_content, is_done) 
+          SELECT 'Welcome to Mini-Notizblock!', false
+          WHERE NOT EXISTS (SELECT 1 FROM notes);
+
+          INSERT INTO notes (text_content, is_done) 
+          SELECT 'Schema created automatically via Helm!', false
+          WHERE (SELECT COUNT(*) FROM notes) = 1;
+
+          INSERT INTO notes (text_content, is_done) 
+          SELECT 'Ready to use! 🚀', false
+          WHERE (SELECT COUNT(*) FROM notes) = 2;
+
+          \dt
+          SELECT COUNT(*) as note_count FROM notes;
+          EOF
+          
+          echo "Database schema initialization completed successfully!"
+{{- end }}

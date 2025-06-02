@@ -11,7 +11,3 @@ spec:
   resources:
     requests:
       storage: 1Gi # Fordere 1 Gibibyte Speicher an. Passe dies nach Bedarf an.
-  # storageClassName: "standard" # Optional: Hängt von deinem Kubernetes-Cluster ab.
-  # Für Minikube ist oft ein StorageClass wie "standard" oder "hostpath" verfügbar.
-  # In Cloud-Providern gibt es spezifische StorageClasses (z.B. "gp2" für AWS EBS).
-  # Wenn du dir unsicher bist, kannst du es erstmal weglassen oder 'kubectl get sc' prüfen.
