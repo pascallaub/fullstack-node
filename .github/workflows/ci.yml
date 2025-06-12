@@ -5,7 +5,7 @@ on:
     branches: [main, master]
     paths:
       - "k8s/**"
-      - ".github/workflows/**" # Um Änderungen an der CI selbst zu erfassen
+      - ".github/workflows/**" 
   pull_request:
     branches: [main, master]
     paths:
@@ -15,6 +15,8 @@ on:
 env:
   FRONTEND_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/mini-notizblock-frontend
   BACKEND_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/mini-notizblock-backend
+  FRONTEND_PATH: ./k8s/frontend
+  BACKEND_PATH: ./k8s/backend
 
 jobs:
   test:
