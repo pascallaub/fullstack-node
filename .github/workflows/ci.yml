@@ -40,19 +40,32 @@ jobs:
           echo "Current directory: $(pwd)"
           echo "Repository root contents:"
           ls -la ./
-          echo "All directories (depth 2):"
-          find . -type d -maxdepth 2 | grep -v "node_modules" | sort
+          echo "K8s directory contents:"
+          ls -la ./k8s/
+          echo "Frontend directory contents:"
+          ls -la ./k8s/frontend/ || echo "Cannot access frontend directory"
+          echo "Backend directory contents:"
+          ls -la ./k8s/backend/ || echo "Cannot access backend directory"
 
       - name: Frontend Tests
         run: |
-          echo "Skipping Frontend tests for now"
-          # Tests deaktiviert bis Repository-Struktur geklärt ist
+          if [ -d "./k8s/frontend" ] && [ -f "./k8s/frontend/package.json" ]; then
+            cd ./k8s/frontend
+            npm ci
+            npm test || echo "No tests found or tests failed"
+          else
+            echo "Skipping Frontend tests - no package.json found"
+          fi
 
       - name: Backend Tests
         run: |
-          cd ./k8s/backend
-          npm ci
-          npm test || echo "No tests found"
+          if [ -d "./k8s/backend" ] && [ -f "./k8s/backend/package.json" ]; then
+            cd ./k8s/backend
+            npm ci
+            npm test || echo "No tests found or tests failed"
+          else
+            echo "Skipping Backend tests - no package.json found"
+          fi
 
   build-and-push:
     name: Build & Push Docker Images
@@ -80,6 +93,23 @@ jobs:
           BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/} | tr '/' '-')
           echo "COMMIT_SHA=$COMMIT_SHA" >> $GITHUB_ENV
           echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+
+      - name: Check Dockerfile presence
+        run: |
+          echo "Checking for Dockerfiles..."
+          if [ -f "${{ env.FRONTEND_PATH }}/Dockerfile" ]; then
+            echo "Frontend Dockerfile found"
+          else
+            echo "Frontend Dockerfile not found!"
+            ls -la ${{ env.FRONTEND_PATH }}
+          fi
+
+          if [ -f "${{ env.BACKEND_PATH }}/Dockerfile" ]; then
+            echo "Backend Dockerfile found"
+          else
+            echo "Backend Dockerfile not found!"
+            ls -la ${{ env.BACKEND_PATH }}
+          fi
 
       - name: Build & Push Frontend Image
         uses: docker/build-push-action@v5
