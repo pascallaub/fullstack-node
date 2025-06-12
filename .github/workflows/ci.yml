@@ -3,8 +3,12 @@ name: CI Pipeline - Build & Push Docker Images
 on:
   push:
     branches: [main, master]
+    paths:
+      - 'k8s/**'
   pull_request:
     branches: [main, master]
+    paths:
+      - 'k8s/**'
 
 env:
   FRONTEND_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/mini-notizblock-frontend
@@ -69,7 +73,7 @@ jobs:
       - name: Build & Push Frontend Image
         uses: docker/build-push-action@v5
         with:
-          context: ./frontend
+          context: ./k8s/frontend
           push: true
           tags: |
             ${{ env.FRONTEND_IMAGE_NAME }}:latest
@@ -81,7 +85,7 @@ jobs:
       - name: Build & Push Backend Image
         uses: docker/build-push-action@v5
         with:
-          context: ./backend
+          context: ./k8s/backend
           push: true
           tags: |
             ${{ env.BACKEND_IMAGE_NAME }}:latest
@@ -114,9 +118,9 @@ jobs:
       - name: Update Helm Chart Values
         run: |
           # Image Tags in values.yaml aktualisieren
-          sed -i "s|repository:.*frontend-image|repository: ${{ env.FRONTEND_IMAGE_NAME }}|g" k8s/myapp-chart/values.yaml
-          sed -i "s|repository:.*backend-image|repository: ${{ env.BACKEND_IMAGE_NAME }}|g" k8s/myapp-chart/values.yaml
-          sed -i "s|tag:.*|tag: \"${{ env.COMMIT_SHA }}\"|g" k8s/myapp-chart/values.yaml
+          sed -i "s|repository:.*frontend-image|repository: ${{ env.FRONTEND_IMAGE_NAME }}|g" ./k8s/myapp-chart/values.yaml
+          sed -i "s|repository:.*backend-image|repository: ${{ env.BACKEND_IMAGE_NAME }}|g" ./k8s/myapp-chart/values.yaml
+          sed -i "s|tag:.*|tag: \"${{ env.COMMIT_SHA }}\"|g" ./k8s/myapp-chart/values.yaml
 
       - name: Commit Changes
         run: |
