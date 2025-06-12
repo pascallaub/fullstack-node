@@ -49,6 +49,19 @@ jobs:
           npm test || echo "No tests found or tests failed"
           echo "Skipping Backend tests - no package.json found"
 
+      - name: Debug Zeige package.json in frontend/backend
+        run: |
+          echo "Inhalt von ./k8s/frontend:"
+          ls -la ./k8s/frontend || echo "Verzeichnis nicht gefunden"
+          echo "Inhalt von ./k8s/frontend/package.json:"
+          cat ./k8s/frontend/package.json || echo "package.json nicht gefunden oder nicht lesbar"
+          echo "Inhalt von ./k8s/backend:"
+          ls -la ./k8s/backend || echo "Verzeichnis nicht gefunden"
+          echo "Inhalt von ./k8s/backend/package.json:"
+          cat ./k8s/backend/package.json || echo "package.json nicht gefunden oder nicht lesbar"
+          echo "Alle package.json im Repo:"
+          find . -name "package.json"
+
   build-and-push:
     name: Build & Push Docker Images
     runs-on: ubuntu-latest
@@ -152,21 +165,3 @@ jobs:
           git add k8s/myapp-chart/values.yaml
           git commit -m "Update image tags to ${{ env.COMMIT_SHA }}" || echo "No changes to commit"
           git push
-
-  check-repo-structure:
-    name: Check Repository Structure
-    runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Check Repository Structure
-        run: |
-          echo "Repository structure:"
-          pwd
-          echo "Root directory:"
-          ls -la
-          echo "All directories up to depth 3:"
-          find . -type d -not -path "*/node_modules/*" -not -path "*/\.*" -maxdepth 3
