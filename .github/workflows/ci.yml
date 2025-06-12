@@ -34,6 +34,19 @@ jobs:
           node-version: "18"
           cache: "npm"
           cache-dependency-path: "**/package-lock.json"
+          
+      - name: Debug Zeige package.json in frontend/backend
+        run: |
+            echo "Inhalt von ./k8s/frontend:"
+            ls -la ./k8s/frontend || echo "Verzeichnis nicht gefunden"
+            echo "Inhalt von ./k8s/frontend/package.json:"
+            cat ./k8s/frontend/package.json || echo "package.json nicht gefunden oder nicht lesbar"
+            echo "Inhalt von ./k8s/backend:"
+            ls -la ./k8s/backend || echo "Verzeichnis nicht gefunden"
+            echo "Inhalt von ./k8s/backend/package.json:"
+            cat ./k8s/backend/package.json || echo "package.json nicht gefunden oder nicht lesbar"
+            echo "Alle package.json im Repo:"
+            find . -name "package.json"
 
       - name: Frontend Tests
         run: |
@@ -49,18 +62,6 @@ jobs:
           npm test || echo "No tests found or tests failed"
           echo "Skipping Backend tests - no package.json found"
 
-      - name: Debug Zeige package.json in frontend/backend
-        run: |
-          echo "Inhalt von ./k8s/frontend:"
-          ls -la ./k8s/frontend || echo "Verzeichnis nicht gefunden"
-          echo "Inhalt von ./k8s/frontend/package.json:"
-          cat ./k8s/frontend/package.json || echo "package.json nicht gefunden oder nicht lesbar"
-          echo "Inhalt von ./k8s/backend:"
-          ls -la ./k8s/backend || echo "Verzeichnis nicht gefunden"
-          echo "Inhalt von ./k8s/backend/package.json:"
-          cat ./k8s/backend/package.json || echo "package.json nicht gefunden oder nicht lesbar"
-          echo "Alle package.json im Repo:"
-          find . -name "package.json"
 
   build-and-push:
     name: Build & Push Docker Images
