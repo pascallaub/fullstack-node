@@ -2,7 +2,7 @@
 
 ## Projektbeschreibung
 
-Dieses Projekt demonstriert die Deployment einer vollständigen Fullstack-Anwendung in Kubernetes mit Helm Charts. Die Anwendung besteht aus:
+Dieses Projekt demonstriert das Deployment einer vollständigen Fullstack-Anwendung in Kubernetes mit Helm Charts. Die Anwendung besteht aus:
 
 - **Frontend**: React Anwendung (Nginx)
 - **Backend**: Node.js REST API mit Express

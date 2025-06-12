@@ -4,11 +4,13 @@ on:
   push:
     branches: [main, master]
     paths:
-      - 'k8s/**'
+      - "k8s/**"
+      - ".github/workflows/**" # Um Änderungen an der CI selbst zu erfassen
   pull_request:
     branches: [main, master]
     paths:
-      - 'k8s/**'
+      - "k8s/**"
+      - ".github/workflows/**"
 
 env:
   FRONTEND_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/mini-notizblock-frontend
@@ -33,13 +35,33 @@ jobs:
 
       - name: Frontend Tests
         run: |
-          cd ./k8s/frontend
+          # Prüfe, wo das Frontend liegt und wechsle in das korrekte Verzeichnis
+          if [ -d "./frontend" ]; then
+            cd ./frontend
+          elif [ -d "./node-container/frontend" ]; then
+            cd ./node-container/frontend
+          elif [ -d "./k8s/frontend" ]; then
+            cd ./k8s/frontend
+          else
+            echo "Frontend directory not found"
+            exit 1
+          fi
           npm ci
           npm test || echo "No tests found"
 
       - name: Backend Tests
         run: |
-          cd ./k8s/backend
+          # Prüfe, wo das Backend liegt und wechsle in das korrekte Verzeichnis
+          if [ -d "./backend" ]; then
+            cd ./backend
+          elif [ -d "./node-container/backend" ]; then
+            cd ./node-container/backend
+          elif [ -d "./k8s/backend" ]; then
+            cd ./k8s/backend
+          else
+            echo "Backend directory not found"
+            exit 1
+          fi
           npm ci
           npm test || echo "No tests found"
 
@@ -70,10 +92,29 @@ jobs:
           echo "COMMIT_SHA=$COMMIT_SHA" >> $GITHUB_ENV
           echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
 
+      - name: Determine project paths
+        id: paths
+        run: |
+          if [ -d "./frontend" ]; then
+            echo "FRONTEND_PATH=./frontend" >> $GITHUB_ENV
+          elif [ -d "./node-container/frontend" ]; then
+            echo "FRONTEND_PATH=./node-container/frontend" >> $GITHUB_ENV
+          elif [ -d "./k8s/frontend" ]; then
+            echo "FRONTEND_PATH=./k8s/frontend" >> $GITHUB_ENV
+          fi
+
+          if [ -d "./backend" ]; then
+            echo "BACKEND_PATH=./backend" >> $GITHUB_ENV
+          elif [ -d "./node-container/backend" ]; then
+            echo "BACKEND_PATH=./node-container/backend" >> $GITHUB_ENV
+          elif [ -d "./k8s/backend" ]; then
+            echo "BACKEND_PATH=./k8s/backend" >> $GITHUB_ENV
+          fi
+
       - name: Build & Push Frontend Image
         uses: docker/build-push-action@v5
         with:
-          context: ./k8s/frontend
+          context: ${{ env.FRONTEND_PATH }}
           push: true
           tags: |
             ${{ env.FRONTEND_IMAGE_NAME }}:latest
@@ -85,7 +126,7 @@ jobs:
       - name: Build & Push Backend Image
         uses: docker/build-push-action@v5
         with:
-          context: ./k8s/backend
+          context: ${{ env.BACKEND_PATH }}
           push: true
           tags: |
             ${{ env.BACKEND_IMAGE_NAME }}:latest
