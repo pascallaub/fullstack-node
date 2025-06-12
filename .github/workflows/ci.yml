@@ -33,13 +33,13 @@ jobs:
 
       - name: Frontend Tests
         run: |
-          cd frontend
+          cd ./k8s/frontend
           npm ci
           npm test || echo "No tests found"
 
       - name: Backend Tests
         run: |
-          cd backend
+          cd ./k8s/backend
           npm ci
           npm test || echo "No tests found"
 
