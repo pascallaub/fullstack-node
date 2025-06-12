@@ -35,37 +35,19 @@ jobs:
           cache: "npm"
           cache-dependency-path: "**/package-lock.json"
 
-      - name: Repository Diagnostics
-        run: |
-          echo "Current directory: $(pwd)"
-          echo "Repository root contents:"
-          ls -la ./
-          echo "K8s directory contents:"
-          ls -la ./k8s/
-          echo "Frontend directory contents:"
-          ls -la ./k8s/frontend/ || echo "Cannot access frontend directory"
-          echo "Backend directory contents:"
-          ls -la ./k8s/backend/ || echo "Cannot access backend directory"
-
       - name: Frontend Tests
         run: |
-          if [ -d "./k8s/frontend" ] && [ -f "./k8s/frontend/package.json" ]; then
-            cd ./k8s/frontend
-            npm ci
-            npm test || echo "No tests found or tests failed"
-          else
-            echo "Skipping Frontend tests - no package.json found"
-          fi
+          cd ./k8s/frontend
+          npm ci
+          npm test || echo "No tests found or tests failed"
+          echo "Skipping Frontend tests - no package.json found"
 
       - name: Backend Tests
         run: |
-          if [ -d "./k8s/backend" ] && [ -f "./k8s/backend/package.json" ]; then
-            cd ./k8s/backend
-            npm ci
-            npm test || echo "No tests found or tests failed"
-          else
-            echo "Skipping Backend tests - no package.json found"
-          fi
+          cd ./k8s/backend
+          npm ci
+          npm test || echo "No tests found or tests failed"
+          echo "Skipping Backend tests - no package.json found"
 
   build-and-push:
     name: Build & Push Docker Images
