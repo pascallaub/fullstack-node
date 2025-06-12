@@ -21,7 +21,7 @@ Dieses Projekt demonstriert die Deployment einer vollständigen Fullstack-Anwend
 - **Backend**: Node.js + Express + PostgreSQL
 - **CI/CD**: Automatische Schema-Migration via Helm Jobs
 
-## Abgabe-Screenshots
+## Projektaufgabe und CI/CD Pipeline
 
 ### 1. Helm Release Installation
 
@@ -58,6 +58,57 @@ _Screenshot zeigt Upgrade mit geänderten Replikazahlen_
 ![Deinstall](public/deinstall.png)
 
 _Screenshot zeigt vollständige Deinstallation aller Komponenten_
+
+## CI/CD Pipeline-Beschreibung
+
+In diesem Projekt wurde eine vollständige CI/CD-Pipeline mit GitHub Actions implementiert, die das Bauen, Taggen und Deployment von Docker-Images für Frontend und Backend automatisiert.
+
+### Aufgabenbeschreibung
+
+Die Hauptaufgabe bestand darin:
+
+- Entwicklung einer Fullstack-Applikation mit React-Frontend, Node.js-Backend und PostgreSQL-Datenbank
+- Deployment der Anwendung mit Kubernetes und Helm
+- Implementierung einer sicheren CI-Pipeline für automatisiertes Building und Pushing von Docker-Images
+- Sichere Handhabung von Credentials in der CI-Umgebung
+- Multi-Stage Docker-Builds für optimierte Container-Images
+
+### CI-Pipeline-Workflow
+
+Die CI-Pipeline (in `.github/workflows/ci.yml`) führt folgende Schritte aus:
+
+1. **Checkout**: Auschecken des aktuellen Repository-Stands
+
+   ```yaml
+   - uses: actions/checkout@v4
+   ```
+
+2. **Authentifizierung bei Docker Hub**: Sicheres Login mit verschlüsselten GitHub Secrets
+
+   ```yaml
+   - name: Login to Docker Hub
+     uses: docker/login-action@v3
+     with:
+       username: ${{ secrets.DOCKERHUB_USERNAME }}
+       password: ${{ secrets.DOCKERHUB_TOKEN }}
+   ```
+
+3. **Docker-Image bauen und taggen**: Multi-Stage Builds mit eindeutigen Tags
+
+   ```yaml
+   - name: Build and push Frontend image
+     uses: docker/build-push-action@v5
+     with:
+       context: ./frontend
+       push: true
+       tags: mephisto1339/frontend-image:latest,mephisto1339/frontend-image:${{ github.ref_name }},mephisto1339/frontend-image:sha-${{ github.sha }}
+   ```
+
+4. **Helm Chart aktualisieren**: Automatisches Update der values.yaml mit neuem Image-Tag
+   ```yaml
+   - name: Update Helm values with new image tags
+     run: sed -i "s|tag:.*|tag: sha-${{ github.sha }}|" myapp-chart/values.yaml
+   ```
 
 ## Helm Chart Struktur
 
@@ -481,3 +532,69 @@ MIT License - siehe LICENSE-Datei für Details.
 ---
 
 **Hinweis**: Diese Dokumentation ist Teil einer Kubernetes/Helm-Abgabe und demonstriert Best Practices für Container-Orchestrierung, Package Management und sichere Credential-Handhabung in Kubernetes-Umgebungen.
+
+---
+
+## Reflexionsfragen & Antworten
+
+**1. Zweck der zwei Stages (Builder und Runner) im Multi-Stage Dockerfile für die React App und Vorteile für CI/CD**
+
+Im Multi-Stage Dockerfile für die React App gibt es zwei Hauptstufen:
+
+- **Builder-Stage:** Hier werden alle Build-Tools (z.B. Node.js, npm/yarn) verwendet, um den Produktions-Build der React-Anwendung zu erstellen (`npm run build`). Diese Stage enthält alle Abhängigkeiten, die nur für das Bauen benötigt werden.
+- **Runner-Stage:** In dieser Stage wird ein leichtgewichtiger Nginx-Container verwendet, in den nur die gebauten, statischen Dateien aus der Builder-Stage kopiert werden. Build-Tools und Quellcode sind hier nicht mehr enthalten.
+
+**Vorteile für CI/CD:**  
+Dieser Ansatz reduziert die Größe des finalen Images erheblich, da nur die wirklich benötigten Artefakte enthalten sind. Das erhöht die Sicherheit (keine Build-Tools im Produktiv-Container), beschleunigt Deployments und minimiert Angriffsflächen.
+
+---
+
+**2. Sichere Speicherung der Docker Hub Zugangsdaten in der CI-Plattform**
+
+Die Zugangsdaten (`DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`) wurden als **GitHub Secrets** in den Repository-Einstellungen hinterlegt.  
+In der CI-Pipeline werden diese Secrets als Umgebungsvariablen referenziert und niemals im Klartext im Repository oder in der Pipeline-Konfiguration gespeichert.
+
+**Warum ist das sicherer?**  
+Secrets sind verschlüsselt gespeichert, werden nur zur Laufzeit der Pipeline entschlüsselt und sind für niemanden im Code oder in der Historie sichtbar. Würden die Zugangsdaten direkt im Repository stehen, könnten sie leicht kompromittiert werden (z.B. durch versehentliches Teilen oder Forks).
+
+---
+
+**3. Abfolge der vier Hauptschritte in der erweiterten CI-Pipeline**
+
+1. **Code holen:**  
+   Die Pipeline checkt den aktuellen Stand des Repositories aus (z.B. via `actions/checkout`).
+2. **Image bauen:**  
+   Das Docker-Image für das Frontend wird mit dem Multi-Stage Dockerfile gebaut (`docker build ...`).
+3. **Login:**  
+   Die Pipeline meldet sich mit den gespeicherten Secrets sicher bei Docker Hub an (`docker login ...`).
+4. **Image pushen:**  
+   Das gebaute Image wird mit einem eindeutigen Tag zu Docker Hub hochgeladen (`docker push ...`).
+
+Jeder Schritt ist notwendig, um sicherzustellen, dass immer der aktuelle Code als Image gebaut und für Deployments bereitgestellt wird.
+
+---
+
+**4. Verwendete Informationen für das Image-Tag und deren Bedeutung**
+
+Als Image-Tag werden mehrere Informationen kombiniert:
+
+- `latest` (für das jeweils aktuellste Image)
+- Branch-Name (z.B. `main`, `feature-xyz`)
+- Commit-Hash (z.B. `sha-abcdef1234`)
+
+**Warum ist ein eindeutiges Tag wichtig?**  
+Ein eindeutiges Tag stellt sicher, dass jedes Image eindeutig einer bestimmten Code-Version zugeordnet werden kann. Das verhindert Verwechslungen, ermöglicht reproduzierbare Deployments und erleichtert das Debugging, da immer klar ist, welcher Code in welchem Container läuft.
+
+---
+
+**5. Fehlersuche bei Push-Problemen in der Pipeline**
+
+Wenn das Docker Image nicht gepusht werden kann, würde ich folgende Schritte zur Fehlersuche durchführen:
+
+- **CI-Logs prüfen:** Die Ausgaben der Pipeline (insbesondere die Schritte `docker login` und `docker push`) auf Fehlermeldungen untersuchen.
+- **Secrets überprüfen:** Sicherstellen, dass die Docker Hub Credentials korrekt als Secrets hinterlegt sind und nicht abgelaufen oder falsch geschrieben wurden.
+- **Repository- und Tag-Namen prüfen:** Überprüfen, ob der Image-Name und das Tag korrekt sind und der Benutzer die nötigen Rechte zum Pushen hat.
+- **Rate Limits und Account-Status:** Prüfen, ob das Docker Hub-Konto gesperrt oder limitiert ist.
+- **Testweise lokal pushen:** Mit den gleichen Zugangsdaten lokal einen Push versuchen, um Netzwerk- oder Rechteprobleme auszuschließen.
+
+---

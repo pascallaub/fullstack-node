@@ -1,39 +1,47 @@
-# Stage 1: Build the React application
-FROM node:lts-alpine AS build-stage
+# Multi-Stage Build für React/Vite App
 
+# ==============================
+# STAGE 1: Build Environment
+# ==============================
+FROM node:18-alpine AS builder
+
+# Arbeitsverzeichnis setzen
 WORKDIR /app
 
+# Package-Dateien kopieren (für besseres Caching)
 COPY package*.json ./
-RUN npm install
 
+# Nur production dependencies installieren
+RUN npm ci --only=production
+
+# Quellcode kopieren
 COPY . .
 
-# Define ARG for API URL (can be overridden during build)
-# Jetzt relativ, da Nginx als Proxy dient
+# Build-Argument für API-URL (kann bei CI überschrieben werden)
 ARG VITE_API_URL=/api
-# Set ENV variable for the build process using the ARG value
-ENV VITE_API_URL=${VITE_API_URL}
+ENV VITE_API_URL=$VITE_API_URL
 
-RUN echo "Building with API URL: ${VITE_API_URL}" # Log the API URL used during build
+# Anwendung bauen
 RUN npm run build
 
-# Stage 2: Serve the static files with Nginx
-FROM nginx:alpine
+# ==============================
+# STAGE 2: Production Environment
+# ==============================
+FROM nginx:alpine AS runner
 
-# Entferne die Standard-Nginx-Konfiguration
-RUN rm /etc/nginx/conf.d/default.conf
+# Nginx-Konfiguration für SPA-Routing
+RUN rm -rf /etc/nginx/conf.d/*
+COPY --from=builder /app/nginx.conf /etc/nginx/conf.d/default.conf
 
-# Kopiere unsere benutzerdefinierte Nginx-Konfiguration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Build-Artefakte von Builder-Stage kopieren
+COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Entferne default nginx static assets
-RUN rm -rf /usr/share/nginx/html/*
-
-# Kopiere statische Assets vom Builder-Stage
-COPY --from=build-stage /app/dist /usr/share/nginx/html
-
-# Expose port 80
+# Port exponieren
 EXPOSE 80
 
-# Containers run nginx with global directives and daemon off
+# Health Check hinzufügen
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget -q --spider http://localhost/ || exit 1
+
+# Container starten
 CMD ["nginx", "-g", "daemon off;"]

@@ -1,27 +1,47 @@
-# Use an official Node runtime as a parent image
-FROM node:lts-alpine
+# Multi-Stage Build für Node.js Backend
 
-# Set the working directory in the container
-WORKDIR /usr/src/app
+# ==============================
+# STAGE 1: Dependencies
+# ==============================
+FROM node:18-alpine AS builder
 
-# Copy package.json AND package-lock.json
-# Using package-lock.json ensures reproducible installs
-COPY package.json package-lock.json ./
+WORKDIR /app
 
-# Install app dependencies using the lock file for consistency
-# --omit=dev skips installing development dependencies
-RUN npm ci --omit=dev
+# Package files kopieren
+COPY package*.json ./
 
-# Install curl
-RUN apk add --no-cache curl
+# Dependencies installieren
+RUN npm ci --only=production
 
-# Bundle app source
+# ==============================
+# STAGE 2: Production
+# ==============================
+FROM node:18-alpine AS runner
+
+# Security: Non-root User erstellen
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodeuser -u 1001
+
+WORKDIR /app
+
+# Nur production dependencies kopieren
+COPY --from=builder /app/node_modules ./node_modules
+
+# Application code kopieren
 COPY . .
 
-# Default port the container will listen on
-ARG PORT=3000
-ENV PORT=${PORT}
-EXPOSE ${PORT}
+# Dem non-root user Rechte geben
+RUN chown -R nodeuser:nodejs /app
 
-# Define the command to run your app
-CMD [ "node", "server.js" ]
+# User wechseln
+USER nodeuser
+
+# Port exponieren
+EXPOSE 3000
+
+# Health Check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget -q --spider http://localhost:3000/api/health || exit 1
+
+# Anwendung starten
+CMD ["node", "server.js"]
